@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		D34CE7091A2291D8008C01AF /* libcrypto.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D34CE7081A2291D8008C01AF /* libcrypto.a */; };
+		D39E1FAB1A229DEF000A662F /* libEasyApple.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D39E1FA61A229DD8000A662F /* libEasyApple.a */; };
 		D3A1F3EB1A20F03300C25F2C /* CryptLib.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = D3A1F3EA1A20F03300C25F2C /* CryptLib.h */; };
 		D3A1F3ED1A20F03300C25F2C /* CryptLib.m in Sources */ = {isa = PBXBuildFile; fileRef = D3A1F3EC1A20F03300C25F2C /* CryptLib.m */; };
 		D3A1F3F31A20F03300C25F2C /* libCryptLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D3A1F3E71A20F03300C25F2C /* libCryptLib.a */; };
@@ -15,6 +16,27 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		D39E1FA51A229DD8000A662F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D39E1FA01A229DD8000A662F /* EasyApple.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = D30F35EB1A22955200B66521;
+			remoteInfo = EasyApple;
+		};
+		D39E1FA71A229DD8000A662F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D39E1FA01A229DD8000A662F /* EasyApple.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = D30F35F61A22955200B66521;
+			remoteInfo = EasyAppleTests;
+		};
+		D39E1FA91A229DE5000A662F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D39E1FA01A229DD8000A662F /* EasyApple.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = D30F35EA1A22955200B66521;
+			remoteInfo = EasyApple;
+		};
 		D3A1F3F41A20F03300C25F2C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D3A1F3DF1A20F03300C25F2C /* Project object */;
@@ -39,6 +61,7 @@
 
 /* Begin PBXFileReference section */
 		D34CE7081A2291D8008C01AF /* libcrypto.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcrypto.a; path = ../OpenSSL/libcrypto.a; sourceTree = "<group>"; };
+		D39E1FA01A229DD8000A662F /* EasyApple.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = EasyApple.xcodeproj; path = ../EasyApple/EasyApple.xcodeproj; sourceTree = "<group>"; };
 		D3A1F3E71A20F03300C25F2C /* libCryptLib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libCryptLib.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		D3A1F3EA1A20F03300C25F2C /* CryptLib.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CryptLib.h; sourceTree = "<group>"; };
 		D3A1F3EC1A20F03300C25F2C /* CryptLib.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CryptLib.m; sourceTree = "<group>"; };
@@ -54,6 +77,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D39E1FAB1A229DEF000A662F /* libEasyApple.a in Frameworks */,
 				D34CE7091A2291D8008C01AF /* libcrypto.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -69,9 +93,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		D39E1FA11A229DD8000A662F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D39E1FA61A229DD8000A662F /* libEasyApple.a */,
+				D39E1FA81A229DD8000A662F /* EasyAppleTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		D3A1F3DE1A20F03300C25F2C = {
 			isa = PBXGroup;
 			children = (
+				D39E1FA01A229DD8000A662F /* EasyApple.xcodeproj */,
 				D34CE7081A2291D8008C01AF /* libcrypto.a */,
 				D3A1F3E91A20F03300C25F2C /* CryptLib */,
 				D3A1F3F61A20F03300C25F2C /* CryptLibTests */,
@@ -130,6 +164,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				D39E1FAA1A229DE5000A662F /* PBXTargetDependency */,
 			);
 			name = CryptLib;
 			productName = CryptLib;
@@ -181,6 +216,12 @@
 			mainGroup = D3A1F3DE1A20F03300C25F2C;
 			productRefGroup = D3A1F3E81A20F03300C25F2C /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = D39E1FA11A229DD8000A662F /* Products */;
+					ProjectRef = D39E1FA01A229DD8000A662F /* EasyApple.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				D3A1F3E61A20F03300C25F2C /* CryptLib */,
@@ -188,6 +229,23 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXReferenceProxy section */
+		D39E1FA61A229DD8000A662F /* libEasyApple.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEasyApple.a;
+			remoteRef = D39E1FA51A229DD8000A662F /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		D39E1FA81A229DD8000A662F /* EasyAppleTests.xctest */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = EasyAppleTests.xctest;
+			remoteRef = D39E1FA71A229DD8000A662F /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
 
 /* Begin PBXResourcesBuildPhase section */
 		D3A1F3F01A20F03300C25F2C /* Resources */ = {
@@ -219,6 +277,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		D39E1FAA1A229DE5000A662F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = EasyApple;
+			targetProxy = D39E1FA91A229DE5000A662F /* PBXContainerItemProxy */;
+		};
 		D3A1F3F51A20F03300C25F2C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = D3A1F3E61A20F03300C25F2C /* CryptLib */;
@@ -308,6 +371,7 @@
 					"$(inherited)",
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					../OpenSSL/include/,
+					../EasyApple/EasyApple,
 				);
 				LIBRARY_SEARCH_PATHS = (
 					../OpenSSL,
@@ -331,6 +395,7 @@
 					"$(inherited)",
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					../OpenSSL/include/,
+					../EasyApple/EasyApple,
 				);
 				LIBRARY_SEARCH_PATHS = (
 					../OpenSSL,

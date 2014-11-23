@@ -10,6 +10,7 @@
 #include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/objects.h>
+#import <EasyApple.h>
 @implementation CryptLib {
     void* db;
 }
@@ -27,9 +28,10 @@
 }
 @end
 
-static const char filename[250];
+static char filename[250];
 const char* GetKeyDbFileName() {
-    
+   NSString* realpath = GetRealPath("key.db");
+    memcpy(filename, realpath.UTF8String, realpath.length);
     return filename;
 }
 void* CreateHash() {
