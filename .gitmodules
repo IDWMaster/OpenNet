@@ -1,0 +1,3 @@
+[submodule "auth/Apple/EasyApple"]
+	path = auth/Apple/EasyApple
+	url = git@github.com:IDWMaster/EasyApple.git
