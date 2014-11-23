@@ -309,7 +309,12 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					../OpenSSL/include/,
 				);
-				OTHER_LDFLAGS = "-ObjC";
+				LIBRARY_SEARCH_PATHS = ../OpenSSL;
+				OTHER_LDFLAGS = (
+					"-ObjC",
+					"-lstdc++",
+					"-lcrypto",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 			};
@@ -323,7 +328,12 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					../OpenSSL/include/,
 				);
-				OTHER_LDFLAGS = "-ObjC";
+				LIBRARY_SEARCH_PATHS = ../OpenSSL;
+				OTHER_LDFLAGS = (
+					"-ObjC",
+					"-lstdc++",
+					"-lcrypto",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 			};
