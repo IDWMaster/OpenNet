@@ -225,7 +225,7 @@ public:
     }
 
 	KeyDatabase() {
-		sqlite3_open("keydb.db", &db);
+		sqlite3_open(GetKeyDbFileName(), &db);
 		char* err;
 		//The thumbprint is a hash of the public key
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Certificates (Thumbprint TEXT, PublicKey BLOB, Authority TEXT, SignedAttributes BLOB, PRIMARY KEY(Thumbprint))",0,0,&err);

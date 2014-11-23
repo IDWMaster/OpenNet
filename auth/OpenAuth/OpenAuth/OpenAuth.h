@@ -37,6 +37,7 @@ extern "C" {
     size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* privateKey, unsigned char* signature);
     bool isValidKey(unsigned char* data, size_t len, bool* isPrivate);
     unsigned char* CreatePrivateKey(size_t* len, size_t* pubLen);
+    const char* GetKeyDbFileName();
 }
 
 class SafeBuffer {

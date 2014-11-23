@@ -12,7 +12,6 @@
 		D3A1F3ED1A20F03300C25F2C /* CryptLib.m in Sources */ = {isa = PBXBuildFile; fileRef = D3A1F3EC1A20F03300C25F2C /* CryptLib.m */; };
 		D3A1F3F31A20F03300C25F2C /* libCryptLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D3A1F3E71A20F03300C25F2C /* libCryptLib.a */; };
 		D3A1F4041A20F1B200C25F2C /* OpenNet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D3A1F4011A20F1B200C25F2C /* OpenNet.cpp */; };
-		D3A1F4051A20F1B200C25F2C /* sqlite3.c in Sources */ = {isa = PBXBuildFile; fileRef = D3A1F4021A20F1B200C25F2C /* sqlite3.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,7 +45,6 @@
 		D3A1F3F21A20F03300C25F2C /* CryptLibTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CryptLibTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D3A1F3F81A20F03300C25F2C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D3A1F4011A20F1B200C25F2C /* OpenNet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = OpenNet.cpp; path = ../../../OpenAuth/OpenAuth/OpenNet.cpp; sourceTree = "<group>"; };
-		D3A1F4021A20F1B200C25F2C /* sqlite3.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = sqlite3.c; path = ../../../OpenAuth/OpenAuth/sqlite3.c; sourceTree = "<group>"; };
 		D3A1F4031A20F1B200C25F2C /* sqlite3.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = sqlite3.h; path = ../../../OpenAuth/OpenAuth/sqlite3.h; sourceTree = "<group>"; };
 		D3A1F4061A20F57E00C25F2C /* OpenAuth.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = OpenAuth.h; path = ../../../OpenAuth/OpenAuth/OpenAuth.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -95,7 +93,6 @@
 			children = (
 				D3A1F4061A20F57E00C25F2C /* OpenAuth.h */,
 				D3A1F4011A20F1B200C25F2C /* OpenNet.cpp */,
-				D3A1F4021A20F1B200C25F2C /* sqlite3.c */,
 				D3A1F4031A20F1B200C25F2C /* sqlite3.h */,
 				D3A1F3EA1A20F03300C25F2C /* CryptLib.h */,
 				D3A1F3EC1A20F03300C25F2C /* CryptLib.m */,
@@ -208,7 +205,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				D3A1F3ED1A20F03300C25F2C /* CryptLib.m in Sources */,
-				D3A1F4051A20F1B200C25F2C /* sqlite3.c in Sources */,
 				D3A1F4041A20F1B200C25F2C /* OpenNet.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

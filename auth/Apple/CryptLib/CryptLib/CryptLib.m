@@ -16,6 +16,8 @@
 -(id)init {
     self = [super init];
     //Open database
+    //TODO: Fix DB path (path needs to be Apple-fied. Can't just do an fopen on a file. No. That's too easy!
+    //have to do a whole bunch of complex stuff first!)
     db = OpenNet_OAuthInitialize();
     
     return self;
@@ -25,6 +27,11 @@
 }
 @end
 
+static const char filename[250];
+const char* GetKeyDbFileName() {
+    
+    return filename;
+}
 void* CreateHash() {
     SHA_CTX* ctx = (SHA_CTX*)malloc(sizeof(SHA_CTX));
     SHA1_Init(ctx);
