@@ -11,8 +11,22 @@
 #include <openssl/rsa.h>
 #include <openssl/objects.h>
 #import <EasyApple.h>
+
+static bool acallback(void* thisptr,const char* value) {
+    bool(^callback)(const char*) = (__bridge bool (^)(const char *))(thisptr);
+    return callback(value);
+}
 @implementation CryptLib {
     void* db;
+}
+- (NSArray *)findCertificates {
+    //TODO: Query our database here.
+    NSMutableArray* thumbprints = [[NSMutableArray alloc] init];
+    OpenNet_OAuthEnumCertficates(db,(__bridge void *)(^(const char* value){
+        [thumbprints addObject:[[NSString alloc] initWithUTF8String:value]];
+        return true;
+    }), acallback);
+    return thumbprints;
 }
 -(id)init {
     self = [super init];

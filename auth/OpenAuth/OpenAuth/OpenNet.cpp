@@ -133,6 +133,17 @@ public:
     sqlite3_stmt* command_getPrivateKeys;
     sqlite3_stmt* command_findObject;
     sqlite3_stmt* command_findPrivateKey;
+    sqlite3_stmt* command_enumerateCertificates;
+    void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
+        int status;
+        while ((status = sqlite3_step(command_enumerateCertificates))) {
+            if(!callback(thisptr,(const char*)sqlite3_column_text(command_enumerateCertificates, 0))) {
+                break;
+            }
+        }
+        sqlite3_reset(command_enumerateCertificates);
+        
+    }
     bool AddCertificate(Certificate* cert) {
 		void* hash = CreateHash();
 		UpdateHash(hash, cert->PublicKey.data(), cert->PublicKey.size());
@@ -246,6 +257,8 @@ public:
         sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_findPrivateKey, &parsed);
         sql = "SELECT * FROM PrivateKeys";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_getPrivateKeys,&parsed);
+        sql = "SELECT * FROM Certificates";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_enumerateCertificates,&parsed);
         int status = 0;
         bool hasKey = false;
         while((status = sqlite3_step(command_getPrivateKeys)) != SQLITE_DONE) {
@@ -321,11 +334,15 @@ public:
         sqlite3_finalize(command_findObject);
         sqlite3_finalize(command_findPrivateKey);
         sqlite3_finalize(command_getPrivateKeys);
+        sqlite3_finalize(command_enumerateCertificates);
 		sqlite3_close(db);
 	}
 };
 
 extern "C" {
+    void OpenNet_OAuthEnumCertficates(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint)) {
+        ((KeyDatabase*)db)->EnumerateCertificates(thisptr,callback);
+    }
     void* OpenNet_OAuthInitialize() {
 		return new KeyDatabase();
     }

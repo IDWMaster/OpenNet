@@ -8,5 +8,5 @@
 
 #import <Foundation/Foundation.h>
 @interface CryptLib : NSObject
-
+- (NSArray*) findCertificates;
 @end
