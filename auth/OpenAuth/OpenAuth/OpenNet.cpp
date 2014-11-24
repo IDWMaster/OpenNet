@@ -137,8 +137,10 @@ public:
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates))) {
+            if(status == SQLITE_ROW) {
             if(!callback(thisptr,(const char*)sqlite3_column_text(command_enumerateCertificates, 0))) {
                 break;
+            }
             }
         }
         sqlite3_reset(command_enumerateCertificates);
