@@ -19,7 +19,7 @@ typedef struct {
 extern "C" {
 #endif
     void* OpenNet_OAuthInitialize();
-    void OpenNet_Retrieve(void* db, const char* name, void(*callback)(NamedObject* obj));
+    void OpenNet_Retrieve(void* db, const char* name, void* thisptr, void(*callback)(void* thisptr,NamedObject* obj));
     bool AddObject(void* db, const char* name, const NamedObject* obj);
     void OpenNet_OAuthDestroy(void* db);
     void OpenNet_OAuthEnumCertficates(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint));

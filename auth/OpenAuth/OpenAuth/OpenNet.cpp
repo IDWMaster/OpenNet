@@ -310,7 +310,7 @@ public:
         }
         return retval;
     }
-    void RetrieveObject(const char* name, void(*callback)(NamedObject* val)) {
+    void RetrieveObject(const char* name, void* thisptr, void(*callback)(void*, NamedObject* val)) {
 
         NamedObject output;
         sqlite3_bind_text(command_findObject,1,name,strlen(name),0);
@@ -322,7 +322,7 @@ public:
                 output.siglen = sqlite3_column_bytes(command_findObject,2);
                 output.blob = (unsigned char*)sqlite3_column_blob(command_findObject,3);
                 output.bloblen = sqlite3_column_bytes(command_findObject,3);
-                callback(&output);
+                callback(thisptr,&output);
                 break;
             }
         }
@@ -357,8 +357,8 @@ extern "C" {
         
     }
 
-    void OpenNet_Retrieve(void* db, const char* name, void(*callback)(NamedObject* obj)) {
+    void OpenNet_Retrieve(void* db, const char* name, void* thisptr, (*callback)(void *, NamedObject *)) {
         KeyDatabase* keydb = (KeyDatabase*)db;
-        keydb->RetrieveObject(name,callback);
+        keydb->RetrieveObject(name,thisptr,callback);
     }
 }

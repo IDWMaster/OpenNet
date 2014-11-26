@@ -12,4 +12,6 @@ $(EXECUTABLE): $(OBJECTS)
 	gcc -g $(CFLAGS) $< -o $@
 .cpp.o:
 	g++ -std=c++0x -g -I../ $(CFLAGS) $< -o $@
-
+gg:
+	g++ --std=c++0x GlobalGrid.cpp -I../ -Iglobalgrid -o distauth -L. -lOpenAuth -Lglobalgrid -lGlobalGrid -luuid -pthread -Wl,-rpath .
+	cp globalgrid/libGlobalGrid.so .
