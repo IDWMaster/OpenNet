@@ -102,7 +102,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
                 size_t objslen = strlen(objName)+1;
                 size_t slen = strlen(object->authority)+1;
                 size_t dataLen = std::min(object->bloblen,1024*4);
-                total = 1+2+objslen+slen+object->bloblen+object->siglen+dataLen;
+                total = 1+2+objslen+slen+4+object->bloblen+4+object->siglen+dataLen;
                 encodedObject = (unsigned char*)malloc(total);
                 unsigned char* ptr = encodedObject;
                 *ptr = 1;
@@ -134,7 +134,13 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
             void(*functor)(void*);
             void* thisptr = C(enumCallback,functor);
             OpenNet_Retrieve(db,objName,thisptr,functor);
+            if(encodedObject) {
             GlobalGrid_Send(connectionmanager,src, 1,srcPort,encodedObject,total);
+            }else {
+                unsigned char* mander = (unsigned char*)(objName-1);
+                *mander = 1;
+                GlobalGrid_Send(connectionmanager,src,1,srcPort,mander,2+strlen((char*)(mander+1)));
+            }
             free(encodedObject);
         }
             break;
@@ -143,7 +149,12 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
             //Packet structure: OPCODE (byte), ,  Object name (string), Block identifier (int16)
             //Authority thumbprint (string), Blob length (Int32)
             //SigLen (int32), Signature (byte[]), Block (byte[])
-
+            char* objName = s.ReadString();
+            if(s.length) {
+                printf("%s found.\n",objName);
+            }else {
+                printf("%s was not found on the requested server.\n",objName);
+            }
             }
             break;
         }
