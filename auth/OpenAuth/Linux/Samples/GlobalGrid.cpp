@@ -60,7 +60,22 @@ public:
         return retval;
     }
 };
+class Download {
+public:
+    unsigned char* buffer;
+    size_t len;
+    Download(size_t len) {
+        buffer = (unsigned char*)malloc(len);
+        this->len = len;
+    }
+    ~Download() {
+        free(buffer);
 
+    }
+};
+
+static std::map<std::string,Download> partialDownloads;
+static void* connectionmanager;
 static void* db;
 static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, unsigned char* data, size_t sz) {
     //Received a DNS request; process it
@@ -70,8 +85,66 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         s.Read(opcode);
         switch(opcode) {
         case 0:
-            //Retrieve named object
+        {
+            uint16_t blockID;
+            s.Read(blockID);
+            //Retrieve named object. A named object has properties such as the authority, signature, and length,
+            //and the blob content is grouped into segments of 4KB each.
+            //This call will retrieve all named attributes of the object, as well as the specified blob index
+            //(where index = n*(4*1024)).
+            //Systems with no prior knowledge of size should always request block 0 first.
+            //The default limit on blob size is 1MB
             char* objName = s.ReadString();
+            unsigned char* encodedObject;
+            size_t total;
+            auto enumCallback = [&](NamedObject* object){
+                //authority, blob, bloblen, signature, siglen
+                size_t objslen = strlen(objName)+1;
+                size_t slen = strlen(object->authority)+1;
+                size_t dataLen = std::min(object->bloblen,1024*4);
+                total = 1+2+objslen+slen+object->bloblen+object->siglen+dataLen;
+                encodedObject = (unsigned char*)malloc(total);
+                unsigned char* ptr = encodedObject;
+                *ptr = 1;
+                ptr++;
+                memcpy(ptr,&blockID,2);
+                ptr+=2;
+                memcpy(ptr,objName,objslen);
+                ptr+=objslen;
+                memcpy(ptr,object->authority,slen);
+                ptr+=slen;
+                //On 64-bit systems this will truncate; but it's OK in most cases.
+                //Unless running on a very strange processor it won't cause any problems.
+                memcpy(ptr,&object->bloblen,4);
+                ptr+=4;
+                memcpy(ptr,&object->siglen,4);
+                ptr+=4;
+                memcpy(ptr,object->signature,object->siglen);
+                ptr+=object->siglen;
+                //Get block
+                unsigned char* addr = (blockID*(1024*4))+object->blob;
+                if(addr+dataLen>object->blob+dataLen) {
+                    //Overflow; respawn
+                    addr = object->blob;
+                }
+                //Write data into the blob
+                memcpy(ptr,addr,dataLen);
+            };
+            //Convert to C-style function pointer
+            void(*functor)(void*);
+            void* thisptr = C(enumCallback,functor);
+            OpenNet_Retrieve(db,objName,thisptr,functor);
+            GlobalGrid_Send(connectionmanager,src, 1,srcPort,encodedObject,total);
+            free(encodedObject);
+        }
+            break;
+        case 1:
+            {
+            //Packet structure: OPCODE (byte), ,  Object name (string), Block identifier (int16)
+            //Authority thumbprint (string), Blob length (Int32)
+            //SigLen (int32), Signature (byte[]), Block (byte[])
+
+            }
             break;
         }
     }catch(const char* err) {
@@ -81,21 +154,12 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
 
 int main(int argc, char** argv) {
 
-    auto bot = [=](const char* txt){
-        printf("%s\n",txt);
-        return 5;
-    };
-    int(*fptr)(void*,const char*);
-    void* thisptr = C(bot,fptr);
-    int rval = fptr(thisptr,"Hi world!");
-    printf("%i\n",rval);
-    sleep(-1);
-    return 0;
 
     printf("OpenNet -- Key generation in progress....\n");
 db = OpenNet_OAuthInitialize();
 printf("OpenNet -- System ready -- net init\n");
     GlobalGrid::P2PConnectionManager mngr;
+    connectionmanager = mngr.nativePtr;
 GlobalGrid::InternetProtocol ip(5809,&mngr);
 mngr.RegisterProtocol(&ip);
 ReceiveCallback onReceived;
