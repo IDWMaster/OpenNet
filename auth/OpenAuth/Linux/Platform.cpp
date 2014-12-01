@@ -26,6 +26,10 @@ extern "C" {
 	void* CreateHash() {
 		return new SHA1();
 	}
+    const char* GetKeyDbFileName() {
+        return "key.db";
+    }
+
 	void UpdateHash(void* hash, const unsigned char* data, size_t sz) {
 		CP(hash, SHA1)->Update(data, sz);
 	}

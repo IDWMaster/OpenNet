@@ -97,31 +97,9 @@ class Certificate:public IDisposable {
 public:
 	std::vector<unsigned char> PublicKey;
 	std::vector<unsigned char> PrivateKey;
-	std::string Authority;
-	std::map<std::string, std::vector<unsigned char>> Properties;
-	std::vector<unsigned char> SignProperties() {
+    std::vector<unsigned char> Signature;
+    std::string Authority;
 
-		SafeResizableBuffer s;
-		//Message at beginning; signature at end
-		uint32_t ct = (uint32_t)Properties.size();
-		s.Write(ct);
-		for (auto it = Properties.begin(); it != Properties.end(); it++) {
-			uint32_t sz = it->first.size();
-			s.Write(sz);
-			s.Write((unsigned char*)it->first.data(),(int)it->first.size());
-			sz = it->second.size();
-			s.Write(sz);
-			s.Write(it->second.data(), (int)it->second.size());
-		}
-
-        size_t sigsegv = CreateSignature((const unsigned char*)s.buffer, s.sz,PrivateKey.data(), 0);
-		size_t oldsz = s.sz;
-		std::vector<unsigned char> retval;
-		retval.resize(oldsz + sigsegv);
-		memcpy(retval.data(), s.buffer, oldsz);
-        sigsegv = CreateSignature((unsigned char*)retval.data(), oldsz,PrivateKey.data(), (unsigned char*)retval.data() + oldsz);
-		return retval;
-	}
 };
 class KeyDatabase:public IDisposable {
 public:
@@ -158,6 +136,8 @@ public:
 		sqlite3_bind_text(command_addcert, 1, thumbprint.data(), thumbprint.size(), 0);
 		sqlite3_bind_blob(command_addcert, 2, cert->PublicKey.data(), cert->PublicKey.size(),0);
 		sqlite3_bind_text(command_addcert, 3, cert->Authority.data(), cert->Authority.size(), 0);
+        sqlite3_bind_blob(command_addcert, 4, cert->Signature.data(),cert->Signature.size(),0);
+
 		//Insert ificate
 		int val;
 		while ((val = sqlite3_step(command_addcert)) != SQLITE_DONE){ if (val != SQLITE_DONE)break; };
@@ -191,21 +171,9 @@ public:
 				retval->PublicKey.resize(sqlite3_column_bytes(command_findcert, 1));
 				memcpy(retval->PublicKey.data(), sqlite3_column_blob(command_findcert, 1),retval->PublicKey.size());
 				retval->Authority = (const char*)sqlite3_column_text(command_findcert, 2);
-				//TODO: Deserialize properties from verified blob
-				SafeBuffer s((void*)sqlite3_column_blob(command_findcert, 3), sqlite3_column_bytes(command_findcert, 3));
-				uint32_t sz;
-				s.Read(sz);
-				for (uint32_t i = 0; i < sz; i++) {
-					uint32_t sz;
-					s.Read(sz);
-					char propname[256];
-					if (sz > 256) {
-						throw "up";
-					}
-					s.Read((unsigned char*)propname,sz);
-                    s.Read(sz);
+                retval->Signature.resize(sqlite3_column_bytes(command_findcert,3));
+                memcpy(retval->Signature.data(),sqlite3_column_blob(command_findcert,3),sqlite3_column_bytes(command_findcert,3));
 
-				}
                 break;
 			}
 		}
@@ -241,10 +209,10 @@ public:
 		sqlite3_open(GetKeyDbFileName(), &db);
 		char* err;
 		//The thumbprint is a hash of the public key
-        sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Certificates (Thumbprint TEXT, PublicKey BLOB, Authority TEXT, SignedAttributes BLOB, PRIMARY KEY(Thumbprint))",0,0,&err);
+        sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Certificates (Thumbprint TEXT, PublicKey BLOB, Authority TEXT, Signature BLOB, PRIMARY KEY(Thumbprint))",0,0,&err);
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS NamedObjects (Name TEXT, Authority TEXT, Signature BLOB, SignedData BLOB)", 0, 0, &err);
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS PrivateKeys (Thumbprint TEXT PRIMARY KEY, PrivateKey BLOB)",0,0,&err);
-		std::string sql = "INSERT INTO Certificates VALUES (?, ?, ?, ?)";
+        std::string sql = "INSERT INTO Certificates VALUES (?, ?, ?, ?)";
 		const char* parsed;
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addcert, &parsed);
         sql = "INSERT INTO NamedObjects VALUES (?, ?, ?, ?)";
@@ -342,8 +310,18 @@ public:
 };
 
 extern "C" {
-    void OpenNet_OAuthEnumCertficates(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint)) {
-        ((KeyDatabase*)db)->EnumerateCertificates(thisptr,callback);
+    void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint)) {
+        KeyDatabase* realdb = (KeyDatabase*)db;
+        int status;
+        while((status = sqlite3_step(realdb->command_getPrivateKeys)) != SQLITE_DONE) {
+            if(status == SQLITE_ROW) {
+                if(!callback(thisptr,sqlite3_column_text(realdb->command_getPrivateKeys,0))) {
+                    break;
+                }
+            }
+        }
+        sqlite3_reset(realdb->command_getPrivateKeys);
+
     }
     void* OpenNet_OAuthInitialize() {
 		return new KeyDatabase();
@@ -351,13 +329,36 @@ extern "C" {
     void OpenNet_OAuthDestroy(void* db) {
         delete (KeyDatabase*)db;
     }
+    void MakeObject(void* db, const char* name,  NamedObject* obj) {
+        KeyDatabase* realdb = (KeyDatabase*)db;
+        int status;
+        sqlite3_bind_text(realdb->command_findPrivateKey,1,obj->authority,strlen(obj->authority),0);
+        while((status = sqlite3_step(realdb->command_findPrivateKey)) != SQLITE_DONE) {
+            if(status == SQLITE_ROW) {
+                //Found key!
+                unsigned char* privKey = (unsigned char*)sqlite3_column_blob(realdb->command_findPrivateKey,1);
+                size_t privLen = sqlite3_column_bytes(realdb->command_findPrivateKey,1);
+                //Sign blob using private key
+                size_t siglen = CreateSignature(obj->blob,obj->bloblen,privKey,0);
+                //Insert into database
+                obj->signature = (unsigned char*)malloc(siglen);
+                obj->siglen = siglen;
+                CreateSignature(obj->blob,obj->bloblen,privKey,obj->signature);
+                AddObject(db,name,obj);
+                free(obj->signature);
+                break;
+            }
+        }
+        sqlite3_reset(realdb->command_findPrivateKey);
+    }
+
     bool AddObject(void* db, const char* name, const NamedObject* obj) {
         KeyDatabase* keydb = (KeyDatabase*)db;
         return keydb->AddObject(*obj,name);
         
     }
 
-    void OpenNet_Retrieve(void* db, const char* name, void* thisptr, (*callback)(void *, NamedObject *)) {
+    void OpenNet_Retrieve(void* db, const char* name, void* thisptr, void(*callback)(void *, NamedObject *)) {
         KeyDatabase* keydb = (KeyDatabase*)db;
         keydb->RetrieveObject(name,thisptr,callback);
     }
