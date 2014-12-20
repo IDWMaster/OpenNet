@@ -23,28 +23,20 @@ int main(int argc, char** argv) {
 GlobalGrid::InternetProtocol ip(5809,&mngr);
 mngr.RegisterProtocol(&ip);
 GGDNS_Init(mngr.nativePtr);
-
-while(true) {
-    printf("Test options:\n");
-    printf("0. Add object\n");
-    char mander[256];
-    memset(mander,0,256);
-    read(1,mander,256);
-    switch(mander[0]) {
-    case '0':
-    {
-        printf("Enter object name: ");
-        memset(mander,0,256);
-        read(1,mander,256);
-        std::string objname = mander;
-        printf("Enter object value (as string):");
-        memset(mander,0,256);
-        read(1,mander,256);
-        std::string objval = mander;
+//Script it. Automated tests for GlobalGrid GGDNS integration
+std::string thumbprint;
+bool(*enumCallback)(void*, const char*);
+void* thisptr = C([&](const char* name){
+    thumbprint = name;
+    return false;
+},enumCallback);
+OpenNet_OAuthEnumCertficates(keydb,thisptr,enumCallback);
+NamedObject object;
+object.authority = (char*)thumbprint.data();
+const char* izard = "PIKACHU!!!!!!!!!!";
+object.blob = (unsigned char*)izard;
+object.bloblen = strlen(izard)+1;
+OpenNet_AddObject(keydb,"Charmander",&object);
 
 
-    }
-        break;
-    }
-}
 }

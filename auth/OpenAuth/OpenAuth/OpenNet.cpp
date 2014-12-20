@@ -315,7 +315,7 @@ extern "C" {
         int status;
         while((status = sqlite3_step(realdb->command_getPrivateKeys)) != SQLITE_DONE) {
             if(status == SQLITE_ROW) {
-                if(!callback(thisptr,sqlite3_column_text(realdb->command_getPrivateKeys,0))) {
+                if(!callback(thisptr,(char*)sqlite3_column_text(realdb->command_getPrivateKeys,0))) {
                     break;
                 }
             }
@@ -329,7 +329,7 @@ extern "C" {
     void OpenNet_OAuthDestroy(void* db) {
         delete (KeyDatabase*)db;
     }
-    void MakeObject(void* db, const char* name,  NamedObject* obj) {
+    void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj) {
         KeyDatabase* realdb = (KeyDatabase*)db;
         int status;
         sqlite3_bind_text(realdb->command_findPrivateKey,1,obj->authority,strlen(obj->authority),0);
@@ -339,12 +339,17 @@ extern "C" {
                 unsigned char* privKey = (unsigned char*)sqlite3_column_blob(realdb->command_findPrivateKey,1);
                 size_t privLen = sqlite3_column_bytes(realdb->command_findPrivateKey,1);
                 //Sign blob using private key
-                size_t siglen = CreateSignature(obj->blob,obj->bloblen,privKey,0);
+                size_t signedBlobLen = strlen(name)+obj->bloblen;
+                unsigned char* signedBlob = malloc(signedBlobLen);
+                memcpy(signedBlob,name,strlen(name));
+                memcpy(signedBlob+strlen(name),obj->blob,obj->bloblen);
+                size_t siglen = CreateSignature(signedBlob,signedBlobLen,privKey,0);
                 //Insert into database
                 obj->signature = (unsigned char*)malloc(siglen);
                 obj->siglen = siglen;
-                CreateSignature(obj->blob,obj->bloblen,privKey,obj->signature);
-                AddObject(db,name,obj);
+                CreateSignature(signedBlob,signedBlobLen,privKey,obj->signature);
+                OpenNet_AddObject(db,name,obj);
+                free(signedBlob);
                 free(obj->signature);
                 break;
             }
@@ -352,7 +357,7 @@ extern "C" {
         sqlite3_reset(realdb->command_findPrivateKey);
     }
 
-    bool AddObject(void* db, const char* name, const NamedObject* obj) {
+    bool OpenNet_AddObject(void* db, const char* name, const NamedObject* obj) {
         KeyDatabase* keydb = (KeyDatabase*)db;
         return keydb->AddObject(*obj,name);
         

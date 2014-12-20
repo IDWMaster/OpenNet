@@ -4,18 +4,7 @@
 #include <OpenAuth.h>
 #include <mutex>
 
-template<typename F, typename... args, typename R>
-static R unsafe_c_callback(void* thisptr,args... a) {
-    return (*((F*)thisptr))(a...);
-}
 
-
-
-template<typename F, typename... args, typename R>
-static void* C(const F& callback, R(*&fptr)(void*,args...)) {
-    fptr = unsafe_c_callback<F,args...>;
-    return (void*)&callback;
-}
 
 
 class BStream {

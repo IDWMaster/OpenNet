@@ -2,6 +2,7 @@
 
 #ifndef OpenNet_Auth
 #define OpenNet_Auth
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,13 +17,25 @@ typedef struct {
     size_t siglen;
 } NamedObject;
 #ifdef __cplusplus
+template<typename F, typename... args, typename R>
+static R unsafe_c_callback(void* thisptr,args... a) {
+    return (*((F*)thisptr))(a...);
+}
+
+
+
+template<typename F, typename... args, typename R>
+static void* C(const F& callback, R(*&fptr)(void*,args...)) {
+    fptr = unsafe_c_callback<F,args...>;
+    return (void*)&callback;
+}
 extern "C" {
 #endif
     void* OpenNet_OAuthInitialize();
     void OpenNet_Retrieve(void* db, const char* name, void* thisptr, void(*callback)(void* thisptr,NamedObject* obj));
-    bool AddObject(void* db, const char* name, const NamedObject* obj);
+    bool OpenNet_AddObject(void* db, const char* name, const NamedObject* obj);
     void OpenNet_OAuthDestroy(void* db);
-    void OpenNet_OAuthEnumCertficates(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint));
+    void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint));
 #ifdef __cplusplus
 }
 #endif
