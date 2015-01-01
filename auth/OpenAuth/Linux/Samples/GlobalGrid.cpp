@@ -37,23 +37,56 @@ void* thisptr = C([&](const char* name){
     return false;
 },enumCallback);
 GGDNS_EnumPrivateKeys(thisptr,enumCallback);
-NamedObject object;
-object.authority = (char*)thumbprint.data();
-const char* izard = "PIKACHU!!!!!!!!!!";
-object.blob = (unsigned char*)izard;
-object.bloblen = strlen(izard)+1;
-printf("Private key thumbprint = %s; signing object....\n",thumbprint.data());
-GGDNS_MakeObject("Charmander",&object);
-if(object.signature) {
-    printf("Signed object and stored in local database.\n");
-}
-void(*callback)(void*,NamedObject*);
-thisptr = C([=](NamedObject* obj){
-    if(obj) {
-        printf("%s\n",obj->blob);
-    }else {
-        printf("Error: Object not found\n");
-    }
-},callback);
-GGDNS_RunQuery("Charmander",thisptr,callback);
+printf("Ready for commands");
+char buffer[256];
+auto readline = [&](){
+	read(STDIN_FILENO,buffer,256);
+	return std::string(buffer);
+};
+std::function<void()> menu = [&]() {
+	printf("\n\n0. Run GGDNS query\n1. Add GGDNS object\nPlease enter a selection: ");
+	std::string input = readline();
+	switch(input[0]) {
+	case '0':
+	{
+
+		printf("Enter object ID: \n");
+		std::mutex m;
+		std::condition_variable evt;
+		std::unique_lock<std::mutex> l(m);
+		void(*callback)(void*,NamedObject*);
+		void* thisptr = C([&](NamedObject* obj){
+			if(obj) {
+				printf("%s\n",(char*)obj->blob);
+			}else {
+				printf("Object not found (NOTE: GGDNS entries are case-sensitive)\n");
+			}
+			evt.notify_all();
+		},callback);
+		std::string id = readline();
+		GGDNS_RunQuery(id.data(),thisptr,callback);
+		evt.wait(l);
+		printf("Operation complete\n");
+		menu();
+	}
+		break;
+	case '1':
+	{
+		printf("Enter GGDNS identifier\n");
+		std::string id = readline();
+		printf("Enter GGDNS value (up to 4KB)\n ");
+		std::string val = readline();
+		NamedObject obj;
+		obj.authority = (char*)thumbprint.data();
+		obj.blob = (unsigned char*)val.data();
+		obj.bloblen = val.size();
+		GGDNS_MakeObject(id.data(),&obj,0,0);
+		printf("Object created successfully.\n");
+		menu();
+	}
+		break;
+	}
+};
+menu();
+sleep(-1);
 }

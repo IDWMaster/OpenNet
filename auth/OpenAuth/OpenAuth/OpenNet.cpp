@@ -362,6 +362,22 @@ extern "C" {
         return keydb->AddObject(*obj,name);
         
     }
+    void OpenNet_AddCertificate(void* db,const OCertificate* abi) {
+    	Certificate cert;
+    	cert.Authority = abi->authority;
+    	cert.PublicKey.resize(abi->pubLen);
+    	cert.Signature.resize(abi->siglen);
+    	memcpy(cert.PublicKey.data(),abi->pubkey,abi->pubLen);
+    	memcpy(cert.Signature.data(),abi->signature,abi->siglen);
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	bool priv;
+    	if(isValidKey(abi->pubkey,abi->pubLen,&priv)) {
+    		if(priv) {
+    			return;
+    		}
+    		keydb->AddCertificate(&cert);
+    	}
+    }
 
     void OpenNet_Retrieve(void* db, const char* name, void* thisptr, void(*callback)(void *, NamedObject *)) {
         KeyDatabase* keydb = (KeyDatabase*)db;

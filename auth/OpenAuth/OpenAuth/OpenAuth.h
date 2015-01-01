@@ -16,6 +16,13 @@ typedef struct {
     unsigned char* signature;
     size_t siglen;
 } NamedObject;
+typedef struct {
+	char* authority;
+	unsigned char* pubkey;
+	size_t pubLen;
+	unsigned char* signature;
+	size_t siglen;
+} OCertificate;
 #ifdef __cplusplus
 template<typename F, typename... args, typename R>
 static R unsafe_c_callback(void* thisptr,args... a) {
@@ -37,6 +44,7 @@ extern "C" {
     void OpenNet_OAuthDestroy(void* db);
     void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint));
     void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj);
+    void OpenNet_AddCertificate(void* db,const OCertificate* abi);
 #ifdef __cplusplus
 }
 #endif
