@@ -67,15 +67,15 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
             void(*callback)(void*,NamedObject*);
             void* thisptr = C([&](NamedObject* obj){
                     //Found it!
-                    size_t sz = 1+strlen(obj->authority)+strlen(name)+4+obj->bloblen+4+obj->siglen;
+                    size_t sz = 1+strlen(obj->authority)+1+strlen(name)+1+4+obj->bloblen+4+obj->siglen;
                     unsigned char* response = (unsigned char*)malloc(sz);
                     unsigned char* ptr = response;
                     *ptr = 1;
                     ptr++;
-                    memcpy(ptr,obj->authority,strlen(obj->authority));
-                    ptr+=strlen(obj->authority);
-                    memcpy(ptr,name,strlen(name));
-                    ptr+=strlen(name);
+                    memcpy(ptr,obj->authority,strlen(obj->authority)+1);
+                    ptr+=strlen(obj->authority)+1;
+                    memcpy(ptr,name,strlen(name)+1);
+                    ptr+=strlen(name)+1;
                     memcpy(ptr,&obj->bloblen,4);
                     ptr+=4;
                     memcpy(ptr,obj->blob,obj->bloblen);
