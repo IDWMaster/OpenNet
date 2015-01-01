@@ -133,6 +133,7 @@ public:
 
 		
 		std::string thumbprint = string_to_hex(izard,20);
+
 		sqlite3_bind_text(command_addcert, 1, thumbprint.data(), thumbprint.size(), 0);
 		sqlite3_bind_blob(command_addcert, 2, cert->PublicKey.data(), cert->PublicKey.size(),0);
 		sqlite3_bind_text(command_addcert, 3, cert->Authority.data(), cert->Authority.size(), 0);
@@ -140,20 +141,19 @@ public:
 
 		//Insert ificate
 		int val;
-		while ((val = sqlite3_step(command_addcert)) != SQLITE_DONE){ if (val != SQLITE_DONE)break; };
+        while ((val = sqlite3_step(command_addcert)) != SQLITE_DONE){  };
 		
 		sqlite3_reset(command_addcert);
 		if (val == SQLITE_DONE) {
             if(cert->PrivateKey.size()) {
                 //Add private key to database
-                hash = CreateHash();
+
                 unsigned char* data = cert->PrivateKey.data();
-                UpdateHash(hash,data,cert->PrivateKey.size());
-                FinalizeHash(hash,izard);
-                thumbprint = string_to_hex(data,20);
                 sqlite3_bind_text(command_addkey,1,thumbprint.data(),thumbprint.size(),0);
                 sqlite3_bind_blob(command_addkey,2,data,cert->PrivateKey.size(),0);
+                val = 0;
                 while((val = sqlite3_step(command_addkey)) != SQLITE_DONE){};
+                sqlite3_reset(command_addkey);
                 return true;
 
             }
@@ -173,7 +173,6 @@ public:
 				retval->Authority = (const char*)sqlite3_column_text(command_findcert, 2);
                 retval->Signature.resize(sqlite3_column_bytes(command_findcert,3));
                 memcpy(retval->Signature.data(),sqlite3_column_blob(command_findcert,3),sqlite3_column_bytes(command_findcert,3));
-
                 break;
 			}
 		}
@@ -219,7 +218,7 @@ public:
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addobject, &parsed);
 		sql = "INSERT INTO PrivateKeys VALUES (?, ?)";
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addkey, &parsed);
-        sql = "SELECT * FROM Certificates WHERE Thumprint = ?";
+        sql = "SELECT * FROM Certificates WHERE Thumbprint = ?";
         sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_findcert, &parsed);
         sql = "SELECT * FROM NamedObjects WHERE Name = ?";
         sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_findObject, &parsed);
@@ -261,20 +260,22 @@ public:
         if(!cert) {
             return false;
         }
-        size_t slen = strlen(name)+1;
+        size_t slen = strlen(name);
         unsigned char* mander = new unsigned char[slen+obj.bloblen];
         memcpy(mander,name,slen);
         memcpy(mander+slen,obj.blob,obj.bloblen);
-        bool retval = VerifySignature(mander,slen+obj.bloblen,obj.signature,obj.siglen);
+        bool retval = VerifySignature(mander,slen+obj.bloblen,obj.signature,obj.siglen,cert->PublicKey.data());
         delete[] mander;
         if(retval) {
             //Name TEXT, Authority TEXT, Signature BLOB, SignedData BLOB
-            sqlite3_bind_text(command_addobject,1,name,slen-1,0);
+            sqlite3_bind_text(command_addobject,1,name,slen,0);
             sqlite3_bind_text(command_addobject,2,obj.authority,strlen(obj.authority),0);
             sqlite3_bind_blob(command_addobject,3,obj.signature,obj.siglen,0);
             sqlite3_bind_blob(command_addobject,4,obj.blob,obj.bloblen,0);
             while(sqlite3_step(command_addobject) != SQLITE_DONE) {}
             sqlite3_reset(command_addobject);
+        }else {
+
         }
         return retval;
     }
@@ -340,14 +341,13 @@ extern "C" {
                 size_t privLen = sqlite3_column_bytes(realdb->command_findPrivateKey,1);
                 //Sign blob using private key
                 size_t signedBlobLen = strlen(name)+obj->bloblen;
-                unsigned char* signedBlob = malloc(signedBlobLen);
+                unsigned char* signedBlob = (unsigned char*)malloc(signedBlobLen);
                 memcpy(signedBlob,name,strlen(name));
                 memcpy(signedBlob+strlen(name),obj->blob,obj->bloblen);
                 size_t siglen = CreateSignature(signedBlob,signedBlobLen,privKey,0);
-                //Insert into database
+                 //Insert into database
                 obj->signature = (unsigned char*)malloc(siglen);
-                obj->siglen = siglen;
-                CreateSignature(signedBlob,signedBlobLen,privKey,obj->signature);
+                obj->siglen = CreateSignature(signedBlob,signedBlobLen,privKey,obj->signature);
                 OpenNet_AddObject(db,name,obj);
                 free(signedBlob);
                 free(obj->signature);

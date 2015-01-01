@@ -36,6 +36,7 @@ extern "C" {
     bool OpenNet_AddObject(void* db, const char* name, const NamedObject* obj);
     void OpenNet_OAuthDestroy(void* db);
     void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint));
+    void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj);
 #ifdef __cplusplus
 }
 #endif
@@ -47,7 +48,7 @@ extern "C" {
 	void* CreateHash();
 	void UpdateHash(void* hash, const unsigned char* data, size_t sz);
 	void FinalizeHash(void* hash, unsigned char* output);
-	bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen);
+    bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen, unsigned char* key);
     size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* privateKey, unsigned char* signature);
     bool isValidKey(unsigned char* data, size_t len, bool* isPrivate);
     unsigned char* CreatePrivateKey(size_t* len, size_t* pubLen);

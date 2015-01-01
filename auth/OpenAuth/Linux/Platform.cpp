@@ -1,138 +1,166 @@
-//This is what Platform.cpp looks like. Read over it and let me know if you have questions.
-//So this is setting up the needs of the app on the linux platform?
-//yes; this contains all necessary platform exports for Linux. what about ios?
-//On iOS these functions need to be re-written. in obj-c/?
-//Yes; they must be written in Objective-C.  so thats my job? Yes; for the first part of the project.
-//Next part will be UI design. I'll let you do that too. ok sweet.
-//Any questions as to how to get started on this?  nope not yet.  just rewriting to woek on ios
-//Yes. It's not as trivial as it sounds.  I would assume not.
-// This is the main DLL file.
-
-
+//
+//  CryptLib.m
+//  CryptLib
+//
+//  Created by Brian Bosak on 11/22/14.
+//  Copyright (c) 2014 Brian Bosak. All rights reserved.
+//
 #include "OpenAuth.h"
+#include <openssl/sha.h>
+#include <openssl/rsa.h>
+#include <openssl/objects.h>
 
-#include <crypto++/sha.h>
-#include <crypto++/rsa.h>
-#include <crypto++/osrng.h>
 
-class IDisposable {
-public:
-	virtual ~IDisposable(){};
-};
-#define CP(val,type)((type*)val)
-#define C(val,type)((type)val)
-using namespace CryptoPP;
-extern "C" {
-	void* CreateHash() {
-		return new SHA1();
-	}
-    const char* GetKeyDbFileName() {
-        return "key.db";
+static char filename[250];
+const char* GetKeyDbFileName() {
+  return "key.db";
+}
+void* CreateHash() {
+    SHA_CTX* ctx = (SHA_CTX*)malloc(sizeof(SHA_CTX));
+    SHA1_Init(ctx);
+    return ctx;
+}
+void UpdateHash(void* hash, const unsigned char* data, size_t sz) {
+    SHA_CTX* ctx = (SHA_CTX*)hash;
+    SHA1_Update(ctx, data, sz);
+}
+void FinalizeHash(void* hash, unsigned char* output) {
+    SHA1_Final(output, (SHA_CTX*)hash);
+}
+size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* privateKey, unsigned char* signature);
+bool isValidKey(unsigned char* data, size_t length, bool* isPrivate) {
+    *isPrivate = false;
+    uint32_t len;
+    if(length<4) {
+        return false;
     }
-
-	void UpdateHash(void* hash, const unsigned char* data, size_t sz) {
-		CP(hash, SHA1)->Update(data, sz);
-	}
-	void FinalizeHash(void* hash, unsigned char* output) {
-		CP(hash, SHA1)->Final(output);
-		delete CP(hash, SHA1);
-	}
-
-    void FreeByteArray(unsigned char* mander) {
-        //Kill the poor Charmander......
-        delete[] mander;
+    memcpy(&len, data, 4);
+    length-=4;
+    data+=4;
+    if (length<len) {
+        return false;
     }
-
-    bool isValidKey(unsigned char* data, size_t len, bool* isPrivate) {
-        *isPrivate = false;
-        SafeBuffer buffer(data,len);
-        unsigned char* buffy = new unsigned char[len];
-        try {
-            //Modulus
-            uint32_t count;
-            buffer.Read(count);
-            buffer.Read(buffy,count);
-            //Exponent
-            buffer.Read(count);
-            buffer.Read(buffy,count);
-            //Private exponent
-            buffer.Read(count);
-            if(count) {
-                buffer.Read(buffy,count);
-                *isPrivate = true;
-            }
-            delete[] buffy;
-            return true;
-        }catch(const char* err) {
-            delete[] buffy;
+    data+=len;
+    length-=len;
+    if(length<4) {
+        return false;
+    }
+    memcpy(&len, data, 4);
+    length-=len;
+    data+=len;
+    if (length>=4) {
+        *isPrivate = true;
+        memcpy(&len, data, 4);
+        length-=4;
+        data+=4;
+        if (length<len) {
             return false;
         }
-    }
-    unsigned char* CreatePrivateKey(size_t* len, size_t* pubLen) {
-        AutoSeededRandomPool rand;
-
-        InvertibleRSAFunction params;
-        params.GenerateRandomWithKeySize(rand,4096);
-        const Integer& modulus = params.GetModulus();
-        const Integer& exponent = params.GetPublicExponent();
-        const Integer& private_exponent = params.GetPrivateExponent();
-        size_t dlen = 4+modulus.MinEncodedSize()+4+exponent.MinEncodedSize()+4+private_exponent.MinEncodedSize();
-        unsigned char* izard = new unsigned char[dlen];
-        unsigned char* str = izard;
-        uint32_t cval = modulus.MinEncodedSize();
-        memcpy(str,&cval,4);
-        str+=4;
-        modulus.Encode(str,modulus.MinEncodedSize());
-        str+=modulus.MinEncodedSize();
-        cval = exponent.MinEncodedSize();
-        memcpy(str,&cval,4);
-        str+=4;
-        exponent.Encode(str,exponent.MinEncodedSize());
-        str+=exponent.MinEncodedSize();
-        cval = private_exponent.MinEncodedSize();
-        memcpy(str,&cval,4);
-        str+=4;
-        *pubLen = ((size_t)str-(size_t)izard);
-        private_exponent.Encode(str,private_exponent.MinEncodedSize());
-        str+=private_exponent.MinEncodedSize();
-        *len = dlen;
-        return izard;
+        return true;
+    }else {
+        return true;
     }
 
-	bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen) {
-		RSASSA_PKCS1v15_SHA_Verifier verifier;
-		return verifier.VerifyMessage(data, dlen, signature, slen);
+}
+unsigned char* CreatePrivateKey(size_t* len, size_t* pubLen) {
+    //MOD, PUB_EXP, PRIV_EXP
+    RSA* msa = RSA_new();
+    BIGNUM* e = BN_new();
+    BN_set_word(e, 65537);
+    RSA_generate_key_ex(msa, 4096, e, 0);
+    BN_free(e);
+    size_t pubSize = 4+BN_num_bytes(msa->n)+4+BN_num_bytes(msa->e);
+    size_t privSize = 4+BN_num_bytes(msa->d);
+    unsigned char* retval = (unsigned char*)malloc(pubSize+privSize);
+    unsigned char* izard = retval;
+    uint32_t count = BN_num_bytes(msa->n);
+    memcpy(izard, &count, 4);
+    izard+=4;
+    BN_bn2bin(msa->n, izard);
+    izard+=count;
+    count = BN_num_bytes(msa->e);
+    memcpy(izard, &count, 4);
+    izard+=4;
+    BN_bn2bin(msa->e, izard);
+    izard+=count;
+    count = BN_num_bytes(msa->d);
+    memcpy(izard, &count, 4);
+    izard+=4;
+    BN_bn2bin(msa->d, izard);
+    *len = pubSize+privSize;
+    *pubLen = pubSize;
+    RSA_free(msa);
+    return retval;
+}
+#define R(output) Read(str,output)
+#define RI ReadBig(str,len)
+template<typename T>
+static void Read(unsigned char*& str, T& output) {
+    memcpy(&output,str,sizeof(output));
+    str+=sizeof(output);
+}
+static BIGNUM* ReadBig(unsigned char*& str,size_t len) {
+    BIGNUM* retval = BN_bin2bn(str,(int)len,0);
+    str+=len;
+    return retval;
+}
 
-	}
-    size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* privateKey, unsigned char* signature) {
-        RSA::PrivateKey key;
-        uint32_t len;
-        memcpy(&len,privateKey,4);
-        privateKey+=4;
-        key.SetModulus(Integer(privateKey,len));
-        privateKey+=len;
-        memcpy(&len,privateKey,4);
-        privateKey+=4;
-        key.SetPublicExponent(Integer(privateKey,len));
-        privateKey+=len;
-        memcpy(&len,privateKey,4);
-        privateKey+=4;
-        key.SetPrivateExponent(Integer(privateKey,len));
+
+size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* privateKey, unsigned char* signature) {
+   unsigned char hash[SHA256_DIGEST_LENGTH];
+   RSA* msa = RSA_new();
+   if(msa->n) {
+       throw "down";
+   }
+   unsigned char* str = (unsigned char*)privateKey;
+   uint32_t len;
+   R(len);
+   msa->n = RI;
+   R(len);
+   msa->e = RI;
+   R(len);
+   msa->d = RI;
+   bool m = false;
+       if(signature == 0) {
+       signature = new unsigned char[RSA_size(msa)];
+       m = true;
+       }
+   SHA256(data,(int)dlen,hash);
+   unsigned int siglen = 0;
+
+   RSA_sign(NID_sha256,hash,SHA256_DIGEST_LENGTH,signature,&siglen,msa);
 
 
-        RSASSA_PKCS1v15_SHA_Signer signer(key);
+   if(!VerifySignature((unsigned char*)data,dlen,signature,siglen,privateKey)) {
+       printf("iPuked\n");
+       abort();
+   }
 
-		size_t mlen = signer.MaxSignatureLength();
-		bool rst = false;
-		if (signature == 0) {
-			signature = new unsigned char[mlen];
-			rst = true;
-		}
-        AutoSeededRandomPool generator;
-        size_t retval = signer.SignMessage(generator, data, dlen, signature);
-		if (rst) {
-			delete[] signature;
-		}
-		return retval;
-	}
+
+
+   if(m) {
+    delete[] signature;
+   }
+    RSA_free(msa);
+
+
+
+    return siglen;
+}
+
+bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen, unsigned char* key) {
+    RSA* msa = RSA_new();
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(data,(int)dlen,hash);
+    unsigned char* str = (unsigned char*)key;
+    uint32_t len;
+    R(len);
+    msa->n = RI;
+    R(len);
+    msa->e = RI;
+
+    bool retval = RSA_verify(NID_sha256,hash,SHA256_DIGEST_LENGTH,signature,slen,msa);
+
+    RSA_free(msa);
+    return retval;
 }

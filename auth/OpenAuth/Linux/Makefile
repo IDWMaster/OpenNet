@@ -1,5 +1,5 @@
 CFLAGS=-c -Wall
-LDFLAGS=-L. -ldl -lcrypto++
+LDFLAGS=-L. -ldl -lcrypto -lssl -lpthread
 LEGACYSOURCES=sqlite3.c
 SOURCES=Platform.cpp OpenNet.cpp
 OBJECTS=$(SOURCES:.cpp=.o) $(LEGACYSOURCES:.c=.o)
