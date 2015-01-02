@@ -148,6 +148,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         {
         	//TODO: Process Received certificate request
         	const char* authority = s.ReadString();
+        	printf("Received certificate request for %s\n",authority);
         	void(*callback)(void* thisptr, OCertificate* cert);
         	thisptr = C([&](OCertificate* cert){
         		if(cert) {
@@ -176,6 +177,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         case 3:
         {
         	//Received certificate information
+        	printf("Received certificate\n");
         	OCertificate cert;
         	cert.authority = s.ReadString();
         	uint32_t len;
