@@ -107,12 +107,10 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	uint32_t val;
         	s.Read(val);
         	obj.bloblen = val;
-        	obj.blob = s.ptr;
-        	s.Increment(val);
+        	obj.blob = s.Increment(val);
         	s.Read(val);
         	obj.siglen = val;
-        	obj.signature = s.ptr;
-        	s.Increment(val);
+        	obj.signature = s.Increment(val);
         	bool success = OpenNet_AddObject(db,name,&obj);
         	if(success) {
         		callbacks_mtx.lock();
@@ -121,12 +119,13 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         			CancelTimer(callback.cancellationToken);
         			callbacks_mtx.unlock();
         			callback.callback(&obj);
-
         		}else {
         			callbacks_mtx.unlock();
+        		}
+        	}else {
         			//TODO: Failed to add object. Likely signature check failed.
         			//Request a copy of the digital signature.
-
+        			printf("Sending certificate request for missing object\n");
         			size_t len = 1+strlen(obj.authority)+1;
         			unsigned char* packet = (unsigned char*)alloca(len);
         			unsigned char* ptr = packet;
@@ -140,7 +139,6 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         				GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,packet,len);
         			}
         			GlobalGrid_FreePeerList(identifiers);
-        		}
         	}
         }
         	break;
@@ -152,7 +150,6 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	void(*callback)(void* thisptr, OCertificate* cert);
         	thisptr = C([&](OCertificate* cert){
         		if(cert) {
-                	OpenNet_RetrieveCertificate(db,authority,thisptr,callback);
                 	size_t sz = 1+strlen(cert->authority)+1+4+cert->siglen+4+cert->pubLen;
                 	unsigned char* packet = (unsigned char*)alloca(sz);
                 	unsigned char* ptr = packet;
@@ -207,7 +204,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	break;
         }
     }catch(const char* err) {
-
+    	printf("Error: %s\n",err);
     }
 }
 template<typename F>
