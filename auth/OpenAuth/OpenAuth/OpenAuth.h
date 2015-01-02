@@ -47,7 +47,7 @@ extern "C" {
     void OpenNet_AddCertificate(void* db,const OCertificate* abi, void* thisptr, void(*callback)(void*,const char*));
     void OpenNet_RetrieveCertificate(void* db, const char* thumbprint,  void* thisptr,  void(*callback)(void*,OCertificate*));
     //Finds the trust anchor for a given certificate; as well as an indication of the resolution status
-    void OpenNet_ResolveChain(void* db, const char* thumbprint, void* thisptr, void(*callback)(void*, const char*, bool))
+    void OpenNet_ResolveChain(void* db, const char* thumbprint, void* thisptr, void(*callback)(void*, const char*, bool));
 #ifdef __cplusplus
 }
 #endif
