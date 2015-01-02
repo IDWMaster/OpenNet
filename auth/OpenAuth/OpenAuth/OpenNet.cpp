@@ -124,7 +124,7 @@ public:
         sqlite3_reset(command_enumerateCertificates);
         
     }
-    bool AddCertificate(Certificate* cert) {
+    std::string AddCertificate(Certificate* cert) {
 		void* hash = CreateHash();
 		UpdateHash(hash, cert->PublicKey.data(), cert->PublicKey.size());
 		//Use Unsigned Charizard's thumbprint
@@ -154,12 +154,12 @@ public:
                 val = 0;
                 while((val = sqlite3_step(command_addkey)) != SQLITE_DONE){};
                 sqlite3_reset(command_addkey);
-                return true;
+                return thumbprint;
 
             }
-            return true;
+            return thumbprint;
 		}
-		return false;
+		return "";
 	}
 	Certificate* FindCertificate(const std::string& thumbprint) {
 		sqlite3_bind_text(command_findcert, 1, thumbprint.data(), thumbprint.size(), 0);
@@ -246,7 +246,7 @@ public:
             memcpy(cert.PrivateKey.data(),key,keylen);
             cert.PublicKey.resize(publen);
             memcpy(cert.PublicKey.data(),key,publen);
-            if(!AddCertificate(&cert)) {
+            if(AddCertificate(&cert).size() == 0) {
                 throw "sideways";
             }
         }
@@ -330,6 +330,32 @@ extern "C" {
     void OpenNet_OAuthDestroy(void* db) {
         delete (KeyDatabase*)db;
     }
+    //Finds the trust anchor for a given certificate; as well as an indication of the resolution status
+    void OpenNet_ResolveChain(void* db, const char* thumbprint, void* thisptr, void(*callback)(void*, const char*, bool)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::string current = thumbprint;
+    	while(true) {
+
+        	Certificate* cert = keydb->FindCertificate(current);
+        	if(cert) {
+        		if(cert->Authority.size() == 0) {
+        			//We've reached the end of the chain.
+        			callback(thisptr,current.data(),true);
+        			delete cert;
+        			break;
+        		}else {
+        			//Move on to the next one in the chain
+        			Certificate* prev = cert;
+        			current = prev->Authority;
+        			delete prev;
+        		}
+        	}else {
+        		//We've lost the chain (need to resolve missing link).
+        		callback(thisptr,current.data(),false);
+        		break;
+        	}
+    	}
+    }
     void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj) {
         KeyDatabase* realdb = (KeyDatabase*)db;
         int status;
@@ -362,7 +388,23 @@ extern "C" {
         return keydb->AddObject(*obj,name);
         
     }
-    void OpenNet_AddCertificate(void* db,const OCertificate* abi) {
+    void OpenNet_RetrieveCertificate(void* db, const char* thumbprint,  void* thisptr,  void(*callback)(void*,OCertificate*)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	Certificate* cert = keydb->FindCertificate(thumbprint);
+    	if(cert) {
+    		OCertificate abi;
+    		abi.authority = (char*)cert->Authority.data();
+    		abi.pubLen = cert->PublicKey.size();
+    		abi.pubkey = (unsigned char*)cert->PublicKey.data();
+    		abi.siglen = cert->Signature.size();
+    		abi.signature = (unsigned char*)cert->Signature.data();
+    		callback(thisptr,&abi);
+    		delete cert;
+    	}else {
+    		callback(thisptr,0);
+    	}
+    }
+    void OpenNet_AddCertificate(void* db,const OCertificate* abi, void* thisptr, void(*callback)(void*,const char*)) {
     	Certificate cert;
     	cert.Authority = abi->authority;
     	cert.PublicKey.resize(abi->pubLen);
@@ -373,9 +415,19 @@ extern "C" {
     	bool priv;
     	if(isValidKey(abi->pubkey,abi->pubLen,&priv)) {
     		if(priv) {
+    			if(callback) {
+    				callback(thisptr,0);
+    			}
     			return;
     		}
-    		keydb->AddCertificate(&cert);
+    		std::string retval = keydb->AddCertificate(&cert);
+    		if(callback) {
+    			callback(thisptr,retval.data());
+    		}
+    	}else {
+    		if(callback) {
+    			callback(thisptr,0);
+    		}
     	}
     }
 

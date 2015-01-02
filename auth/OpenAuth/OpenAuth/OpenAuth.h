@@ -44,7 +44,10 @@ extern "C" {
     void OpenNet_OAuthDestroy(void* db);
     void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint));
     void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj);
-    void OpenNet_AddCertificate(void* db,const OCertificate* abi);
+    void OpenNet_AddCertificate(void* db,const OCertificate* abi, void* thisptr, void(*callback)(void*,const char*));
+    void OpenNet_RetrieveCertificate(void* db, const char* thumbprint,  void* thisptr,  void(*callback)(void*,OCertificate*));
+    //Finds the trust anchor for a given certificate; as well as an indication of the resolution status
+    void OpenNet_ResolveChain(void* db, const char* thumbprint, void* thisptr, void(*callback)(void*, const char*, bool))
 #ifdef __cplusplus
 }
 #endif

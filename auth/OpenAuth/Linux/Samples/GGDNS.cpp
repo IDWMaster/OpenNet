@@ -15,12 +15,14 @@ public:
         this->ptr = buffer;
         this->length = sz;
     }
-    void Increment(size_t sz) {
+    unsigned char* Increment(size_t sz) {
+    	unsigned char* retval = ptr;
     	if(sz>length) {
     		throw "up";
     	}
     	length-=sz;
     	ptr+=sz;
+    	return retval;
     }
     void Read(unsigned char* buffer, size_t len) {
         if(len>length) {
@@ -47,8 +49,14 @@ public:
 	std::function<void(NamedObject*)> callback;
 	bool* cancellationToken;
 };
+class CertCallback {
+public:
+	std::function<void(bool)> callback;
+	bool* cancellationToken;
+};
 static std::mutex callbacks_mtx;
 static std::map<std::string,Callback> callbacks;
+static std::map<std::string,CertCallback> certCallbacks;
 static void* connectionmanager;
 static void* db;
 
@@ -91,6 +99,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         }
             break;
         case 1:
+        {
         	NamedObject obj;
         	obj.authority = s.ReadString();
         	const char* name = s.ReadString();
@@ -115,8 +124,84 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
 
         		}else {
         			callbacks_mtx.unlock();
+        			//TODO: Failed to add object. Likely signature check failed.
+        			//Request a copy of the digital signature.
+
+        			size_t len = 1+strlen(obj.authority)+1;
+        			unsigned char* packet = (unsigned char*)alloca(len);
+        			unsigned char* ptr = packet;
+        			*ptr = 2;
+        			ptr++;
+        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
+        			ptr+=strlen(obj.authority)+1;
+        			GlobalGrid_Identifier* identifiers;
+        			size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
+        			for(size_t i = 0;i<length;i++) {
+        				GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,packet,len);
+        			}
+        			GlobalGrid_FreePeerList(identifiers);
         		}
         	}
+        }
+        	break;
+        case 2:
+        {
+        	//TODO: Process Received certificate request
+        	const char* authority = s.ReadString();
+        	void(*callback)(void* thisptr, OCertificate* cert);
+        	thisptr = C([&](OCertificate* cert){
+        		if(cert) {
+                	OpenNet_RetrieveCertificate(db,authority,thisptr,callback);
+                	size_t sz = 1+strlen(cert->authority)+1+4+cert->siglen+4+cert->pubLen;
+                	unsigned char* packet = (unsigned char*)alloca(sz);
+                	unsigned char* ptr = packet;
+                	*ptr = 3;
+                	ptr++;
+                	memcpy(ptr,cert->authority,strlen(cert->authority)+1);
+                	ptr+=strlen(cert->authority)+1;
+                	memcpy(ptr,&cert->siglen,4);
+                	ptr+=4;
+                	memcpy(ptr,cert->signature,cert->siglen);
+                	ptr+=cert->siglen;
+                	memcpy(ptr,&cert->pubLen,4);
+                	ptr+=4;
+                	memcpy(ptr,cert->pubkey,cert->pubLen);
+                	GlobalGrid_Send(connectionmanager,src,srcPort,1,packet,sz);
+        		}
+        	},callback);
+        	OpenNet_RetrieveCertificate(db,authority,thisptr,callback);
+
+        }
+        break;
+        case 3:
+        {
+        	//Received certificate information
+        	OCertificate cert;
+        	cert.authority = s.ReadString();
+        	uint32_t len;
+        	s.Read(len);
+        	cert.signature = s.Increment(len);
+        	s.Read(len);
+        	cert.pubkey = s.Increment(len);
+        	void(*callback)(void*,const char*);
+        	CertCallback cb;
+        	bool found = false;
+        	thisptr = C([&](const char* thumbprint){
+        		callbacks_mtx.lock();
+        		if(certCallbacks.find(thumbprint) != certCallbacks.end()) {
+        			cb = certCallbacks[thumbprint];
+        			callbacks_mtx.unlock();
+        			CancelTimer(cb.cancellationToken);
+        			found = true;
+        		}else {
+        			callbacks_mtx.unlock();
+        		}
+        	},callback);
+        	OpenNet_AddCertificate(db,&cert,thisptr,callback);
+        	if(found) {
+        		cb.callback(true);
+        	}
+        }
         	break;
         }
     }catch(const char* err) {
