@@ -304,7 +304,8 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     		revisionID++;
     	}
     };
-    OpenNet_Retrieve(db,name,C(bot,cm),cm);
+    void* tp = C(bot,cm);
+    OpenNet_Retrieve(db,name,tp,cm);
     unsigned char* data = new unsigned char[object->bloblen+4];
     memcpy(data,&revisionID,4);
     memcpy(data+4,object->blob,object->bloblen);
