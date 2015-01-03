@@ -246,9 +246,14 @@ public:
             memcpy(cert.PrivateKey.data(),key,keylen);
             cert.PublicKey.resize(publen);
             memcpy(cert.PublicKey.data(),key,publen);
+            bool p;
+            if(!isValidKey(cert.PublicKey.data(),cert.PublicKey.size(),&p)) {
+            	throw "up";
+            }
             if(AddCertificate(&cert).size() == 0) {
                 throw "sideways";
             }
+            free(key);
         }
 
 	}

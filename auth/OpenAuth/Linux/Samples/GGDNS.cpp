@@ -125,7 +125,6 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	}else {
         			//TODO: Failed to add object. Likely signature check failed.
         			//Request a copy of the digital signature.
-        			printf("Sending certificate request for missing object\n");
         			size_t len = 1+strlen(obj.authority)+1;
         			unsigned char* packet = (unsigned char*)alloca(len);
         			unsigned char* ptr = packet;
@@ -179,13 +178,20 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	cert.authority = s.ReadString();
         	uint32_t len;
         	s.Read(len);
+        	cert.siglen = len;
         	cert.signature = s.Increment(len);
         	s.Read(len);
+        	cert.pubLen = len;
         	cert.pubkey = s.Increment(len);
         	void(*callback)(void*,const char*);
         	CertCallback cb;
         	bool found = false;
         	thisptr = C([&](const char* thumbprint){
+        		if(thumbprint == 0) {
+        			printf("Error adding certificate to database\n");
+        			return;
+        		}
+        		printf("Certificate with thumbprint %s added to database.\n",thumbprint);
         		callbacks_mtx.lock();
         		if(certCallbacks.find(thumbprint) != certCallbacks.end()) {
         			cb = certCallbacks[thumbprint];
@@ -196,6 +202,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         			callbacks_mtx.unlock();
         		}
         	},callback);
+        	printf("Adding certificate to database\n");
         	OpenNet_AddCertificate(db,&cert,thisptr,callback);
         	if(found) {
         		cb.callback(true);

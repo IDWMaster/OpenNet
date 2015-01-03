@@ -46,6 +46,11 @@ bool isValidKey(unsigned char* data, size_t length, bool* isPrivate) {
         return false;
     }
     memcpy(&len, data, 4);
+    length-=4;
+    data+=4;
+    if(length<len) {
+    	return false;
+    }
     length-=len;
     data+=len;
     if (length>=4) {
