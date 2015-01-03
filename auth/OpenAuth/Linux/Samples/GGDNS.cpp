@@ -111,6 +111,22 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	s.Read(val);
         	obj.siglen = val;
         	obj.signature = s.Increment(val);
+        	bool replace = false;
+        	uint32_t objVersion;
+        	uint32_t oldVersion;
+        	memcpy(&oldVersion,obj.blob,4);
+        	void(*c)(void*, NamedObject*);
+        	std::string oldauth;
+        	if(obj.bloblen<4 || oldauth != obj.authority) {
+        		return;
+        	}
+        	OpenNet_Retrieve(db,name,C([&](NamedObject* obj){
+        		if(obj) {
+        			replace = true;
+        			memcpy(&objVersion,obj->blob,4);
+        			oldauth = obj->authority;
+        		}
+        	},c),c);
         	bool success = OpenNet_AddObject(db,name,&obj);
         	if(success) {
         		callbacks_mtx.lock();
@@ -241,15 +257,19 @@ template<typename F>
 static void RunQuery(const char* name, const F& callback) {
     void(*functor)(void*,NamedObject*);
     bool m = false;
+    auto invokeCallback = [=](NamedObject* obj) {
+    	obj->blob+=4;
+    	callback(obj);
+    };
     auto bot = [&](NamedObject* obj) {
         m = true;
-        callback(obj);
+        invokeCallback(obj);
     };
     void* thisptr = C(bot,functor);
     OpenNet_Retrieve(db,name,thisptr,functor);
     if(!m) {
         //Send query
-        SendQuery(name,callback);
+        SendQuery(name,invokeCallback);
     }
 }
 static void GGDNS_Initialize(void* manager) {
@@ -274,9 +294,26 @@ void GGDNS_EnumPrivateKeys(void* thisptr,bool(*enumCallback)(void*,const char*))
 }
 
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
-    OpenNet_MakeObject(db,name,object);
+    uint32_t revisionID = 0;
+    void(*cm)(void*,NamedObject*);
+    NamedObject* val = 0;
+    OpenNet_Retrieve(db,name,C([&](NamedObject* obj){
+    	if(obj) {
+    		val = obj;
+    		memcpy(&revisionID,obj->blob,4);
+    		revisionID++;
+    	}
+    },cm),cm);
+    unsigned char* data = new unsigned char[object->bloblen+4];
+    memcpy(data,&revisionID,4);
+    memcpy(data+4,object->blob,object->bloblen);
+    NamedObject ival = *object;
+    ival.blob = data;
+    OpenNet_MakeObject(db,name,&ival);
+    delete[] data;
     if(callback) {
-    callback(thisptr,true);
+    	//TODO: Not yet implemented.
+    callback(thisptr,false);
     }
 }
 
