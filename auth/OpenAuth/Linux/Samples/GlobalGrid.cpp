@@ -38,10 +38,10 @@ void* thisptr = C([&](const char* name){
 },enumCallback);
 GGDNS_EnumPrivateKeys(thisptr,enumCallback);
 printf("Ready for commands");
-char buffer[256];
+char buffer[1024*4];
 auto readline = [&](){
 	//read(STDIN_FILENO,buffer,256);
-	std::cin.getline(buffer,256);
+	std::cin.getline(buffer,1024*4);
 	return std::string(buffer);
 };
 std::function<void()> menu = [&]() {
