@@ -40,7 +40,8 @@ GGDNS_EnumPrivateKeys(thisptr,enumCallback);
 printf("Ready for commands");
 char buffer[256];
 auto readline = [&](){
-	read(STDIN_FILENO,buffer,256);
+	//read(STDIN_FILENO,buffer,256);
+	std::cin.getline(buffer,256);
 	return std::string(buffer);
 };
 std::function<void()> menu = [&]() {
@@ -55,17 +56,20 @@ std::function<void()> menu = [&]() {
 		std::condition_variable evt;
 		std::unique_lock<std::mutex> l(m);
 		void(*callback)(void*,NamedObject*);
+		bool c = false;
 		void* thisptr = C([&](NamedObject* obj){
 			if(obj) {
 				printf("%s\n",(char*)obj->blob);
 			}else {
 				printf("Object not found (NOTE: GGDNS entries are case-sensitive)\n");
 			}
-			evt.notify_all();
+			c = true;
 		},callback);
 		std::string id = readline();
 		GGDNS_RunQuery(id.data(),thisptr,callback);
-		evt.wait(l);
+		while(!c) {
+			sleep(1);
+		}
 		printf("Operation complete\n");
 		menu();
 	}

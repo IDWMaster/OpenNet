@@ -117,9 +117,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	memcpy(&oldVersion,obj.blob,4);
         	void(*c)(void*, NamedObject*);
         	std::string oldauth;
-        	if(obj.bloblen<4 || oldauth != obj.authority) {
-        		return;
-        	}
+
         	OpenNet_Retrieve(db,name,C([&](NamedObject* obj){
         		if(obj) {
         			replace = true;
@@ -127,6 +125,9 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         			oldauth = obj->authority;
         		}
         	},c),c);
+        	if(obj.bloblen<4 || (oldauth != obj.authority && replace)) {
+        	        		return;
+        	        	}
         	bool success = OpenNet_AddObject(db,name,&obj);
         	if(success) {
         		callbacks_mtx.lock();
@@ -141,6 +142,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	}else {
         			//TODO: Failed to add object. Likely signature check failed.
         			//Request a copy of the digital signature.
+
         		callbacks_mtx.lock();
         		CertCallback ccb;
         		std::string auth = obj.authority;
@@ -170,6 +172,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         			ptr+=strlen(obj.authority)+1;
         			GlobalGrid_Identifier* identifiers;
         			size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
+
         			for(size_t i = 0;i<length;i++) {
         				GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,packet,len);
         			}
