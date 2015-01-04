@@ -59,7 +59,7 @@ static std::map<std::string,Callback> callbacks;
 static std::map<std::string,CertCallback> certCallbacks;
 static void* connectionmanager;
 static void* db;
-
+static void SendQuery_Raw(const char* name);
 static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, unsigned char* data, size_t sz) {
     //Received a DNS request; process it
     BStream s(data,sz);
@@ -141,6 +141,26 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	}else {
         			//TODO: Failed to add object. Likely signature check failed.
         			//Request a copy of the digital signature.
+        		callbacks_mtx.lock();
+        		CertCallback ccb;
+        		std::string auth = obj.authority;
+        		std::string objname = name;
+        		ccb.callback = [=](bool success){
+        			callbacks_mtx.lock();
+        			if(certCallbacks.find(auth) != certCallbacks.end()) {
+        				certCallbacks.erase(auth);
+        			}
+        			callbacks_mtx.unlock();
+        			//TODO: Resend request if successful
+        			if(success) {
+        				SendQuery_Raw(objname.data());
+        			}
+        		};
+        		ccb.cancellationToken = CreateTimer([=](){
+        			ccb.callback(false);
+        		},5000);
+        		certCallbacks[obj.authority] = ccb;
+        		callbacks_mtx.unlock();
         			size_t len = 1+strlen(obj.authority)+1;
         			unsigned char* packet = (unsigned char*)alloca(len);
         			unsigned char* ptr = packet;
@@ -230,6 +250,22 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
     	printf("Error: %s\n",err);
     }
 }
+static void SendQuery_Raw(const char* name) {
+	//OPCODE, name
+
+    	size_t namelen = strlen(name)+1;
+	    unsigned char* buffer = new unsigned char[1+namelen];
+	    unsigned char* ptr = buffer;
+	    *ptr = 0;
+	    ptr++;
+	    memcpy(ptr,name,namelen);
+	    GlobalGrid_Identifier* identifiers;
+	    size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
+	    for(size_t i = 0;i<length;i++) {
+	        GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,buffer,1+namelen);
+	    }
+	    delete[] buffer;
+}
 template<typename F>
 static void SendQuery(const char* name, const F& callback) {
 	callbacks_mtx.lock();
@@ -238,19 +274,7 @@ static void SendQuery(const char* name, const F& callback) {
 	cb.cancellationToken = CreateTimer([=](){callback(0);},5000);
 	callbacks[name] = cb;
 	callbacks_mtx.unlock();
-    size_t namelen = strlen(name)+1;
-    //OPCODE, name
-    unsigned char* buffer = new unsigned char[1+namelen];
-    unsigned char* ptr = buffer;
-    *ptr = 0;
-    ptr++;
-    memcpy(ptr,name,namelen);
-    GlobalGrid_Identifier* identifiers;
-    size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
-    for(size_t i = 0;i<length;i++) {
-        GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,buffer,1+namelen);
-    }
-    delete[] buffer;
+    SendQuery_Raw(name);
 }
 
 template<typename F>
@@ -258,11 +282,20 @@ static void RunQuery(const char* name, const F& callback) {
     void(*functor)(void*,NamedObject*);
     bool m = false;
     auto invokeCallback = [=](NamedObject* obj) {
+    	callbacks_mtx.lock();
+    	if(callbacks.find(name) != callbacks.end()) {
+    		callbacks.erase(name);
+    	}
+    	callbacks_mtx.unlock();
+    	if(obj) {
     	obj->blob+=4;
     	obj->bloblen-=4;
+    	}
     	callback(obj);
     };
     auto bot = [&](NamedObject* obj) {
+
+
         m = true;
         invokeCallback(obj);
     };
@@ -271,6 +304,8 @@ static void RunQuery(const char* name, const F& callback) {
     if(!m) {
         //Send query
         SendQuery(name,invokeCallback);
+    }else {
+    	SendQuery_Raw(name);
     }
 }
 static void GGDNS_Initialize(void* manager) {
