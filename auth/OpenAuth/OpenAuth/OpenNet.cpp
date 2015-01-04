@@ -112,6 +112,7 @@ public:
     sqlite3_stmt* command_findObject;
     sqlite3_stmt* command_findPrivateKey;
     sqlite3_stmt* command_enumerateCertificates;
+    sqlite3_stmt* command_updateObject;
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates)) != SQLITE_DONE) {
@@ -228,6 +229,9 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_getPrivateKeys,&parsed);
         sql = "SELECT * FROM Certificates";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_enumerateCertificates,&parsed);
+        sql = "UPDATE NamedObjects SET Authority = ?, Signature = ?, SignedData = ? WHERE Name = ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_updateObject,&parsed);
+
         int status = 0;
         bool hasKey = false;
         while((status = sqlite3_step(command_getPrivateKeys)) != SQLITE_DONE) {
@@ -257,7 +261,7 @@ public:
         }
 
 	}
-    bool AddObject(const NamedObject& obj, const char* name) {
+    bool AddObject(const NamedObject& obj, const char* name, bool update = false) {
         //Adds a named object to the database
         //Verify signature on BOTH name and data
         bool foundAuthority = false;
@@ -272,6 +276,15 @@ public:
         bool retval = VerifySignature(mander,slen+obj.bloblen,obj.signature,obj.siglen,cert->PublicKey.data());
         delete[] mander;
         if(retval) {
+        	if(update) {
+        		//UPDATE NamedObjects SET Authority = ?, Signature = ?, SignedData = ? WHERE Name = ?
+        		sqlite3_bind_text(command_updateObject,1,obj.authority,strlen(obj.authority),0);
+        		sqlite3_bind_blob(command_updateObject,2,obj.signature,obj.siglen,0);
+        		sqlite3_bind_blob(command_updateObject,3,obj.blob,obj.bloblen,0);
+        		sqlite3_bind_text(command_updateObject,4,name,slen,0);
+        		while(sqlite3_step(command_updateObject) != SQLITE_DONE) {}
+        		sqlite3_reset(command_updateObject);
+        	}else {
             //Name TEXT, Authority TEXT, Signature BLOB, SignedData BLOB
             sqlite3_bind_text(command_addobject,1,name,slen,0);
             sqlite3_bind_text(command_addobject,2,obj.authority,strlen(obj.authority),0);
@@ -279,6 +292,7 @@ public:
             sqlite3_bind_blob(command_addobject,4,obj.blob,obj.bloblen,0);
             while(sqlite3_step(command_addobject) != SQLITE_DONE) {}
             sqlite3_reset(command_addobject);
+        	}
         }else {
 
         }
@@ -361,7 +375,7 @@ extern "C" {
         	}
     	}
     }
-    void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj) {
+    void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj, bool update) {
         KeyDatabase* realdb = (KeyDatabase*)db;
         int status;
         sqlite3_bind_text(realdb->command_findPrivateKey,1,obj->authority,strlen(obj->authority),0);
@@ -379,7 +393,11 @@ extern "C" {
                  //Insert into database
                 obj->signature = (unsigned char*)malloc(siglen);
                 obj->siglen = CreateSignature(signedBlob,signedBlobLen,privKey,obj->signature);
+                if(update) {
+                	OpenNet_UpdateObject(db,name,obj);
+                }else {
                 OpenNet_AddObject(db,name,obj);
+                }
                 free(signedBlob);
                 free(obj->signature);
                 break;
@@ -392,6 +410,11 @@ extern "C" {
         KeyDatabase* keydb = (KeyDatabase*)db;
         return keydb->AddObject(*obj,name);
         
+    }
+    bool OpenNet_UpdateObject(void* db, const char* name, const NamedObject* obj) {
+            KeyDatabase* keydb = (KeyDatabase*)db;
+            return keydb->AddObject(*obj,name,true);
+
     }
     void OpenNet_RetrieveCertificate(void* db, const char* thumbprint,  void* thisptr,  void(*callback)(void*,OCertificate*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;

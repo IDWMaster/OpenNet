@@ -259,6 +259,7 @@ static void RunQuery(const char* name, const F& callback) {
     bool m = false;
     auto invokeCallback = [=](NamedObject* obj) {
     	obj->blob+=4;
+    	obj->bloblen-=4;
     	callback(obj);
     };
     auto bot = [&](NamedObject* obj) {
@@ -311,7 +312,12 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     memcpy(data+4,object->blob,object->bloblen);
     NamedObject ival = *object;
     ival.blob = data;
-    OpenNet_MakeObject(db,name,&ival);
+    ival.bloblen = object->bloblen+4;
+    ival.siglen = 0;
+    ival.signature = 0;
+
+    OpenNet_MakeObject(db,name,&ival,val);
+
     delete[] data;
     if(callback) {
     	//TODO: Not yet implemented.
