@@ -118,17 +118,27 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	void(*c)(void*, NamedObject*);
         	std::string oldauth;
 
-        	OpenNet_Retrieve(db,name,C([&](NamedObject* obj){
+        	auto cvi = [&](NamedObject* obj){
         		if(obj) {
         			replace = true;
         			memcpy(&objVersion,obj->blob,4);
         			oldauth = obj->authority;
         		}
-        	},c),c);
+        	};
+        	if(objVersion <=oldVersion) {
+        		return;
+        	}
+        	void* tp = C(cvi,c);
+        	OpenNet_Retrieve(db,name,tp,c);
         	if(obj.bloblen<4 || (oldauth != obj.authority && replace)) {
         	        		return;
         	        	}
-        	bool success = OpenNet_AddObject(db,name,&obj);
+        	bool success = false;
+        	if(replace) {
+        		success = OpenNet_UpdateObject(db,name,&obj);
+        	}else {
+        	success = OpenNet_AddObject(db,name,&obj);
+        	}
         	if(success) {
         		callbacks_mtx.lock();
         		if(callbacks.find(name) != callbacks.end()) {
@@ -281,9 +291,10 @@ static void SendQuery(const char* name, const F& callback) {
 }
 
 template<typename F>
-static void RunQuery(const char* name, const F& callback) {
+static void RunQuery(const char* _name, const F& callback) {
     void(*functor)(void*,NamedObject*);
     bool m = false;
+    std::string name = _name;
     auto invokeCallback = [=](NamedObject* obj) {
     	callbacks_mtx.lock();
     	if(callbacks.find(name) != callbacks.end()) {
@@ -302,13 +313,13 @@ static void RunQuery(const char* name, const F& callback) {
         m = true;
         invokeCallback(obj);
     };
-    void* thisptr = C(bot,functor);
-    OpenNet_Retrieve(db,name,thisptr,functor);
+    void* thisptr = C(bot,functor); //TODO: Why does name get corrupted here?
+    OpenNet_Retrieve(db,name.data(),thisptr,functor);
     if(!m) {
         //Send query
-        SendQuery(name,invokeCallback);
+        SendQuery(name.data(),invokeCallback);
     }else {
-    	SendQuery_Raw(name);
+    	SendQuery_Raw(name.data());
     }
 }
 static void GGDNS_Initialize(void* manager) {

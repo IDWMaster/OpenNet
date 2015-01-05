@@ -212,7 +212,7 @@ public:
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Certificates (Thumbprint TEXT, PublicKey BLOB, Authority TEXT, Signature BLOB, PRIMARY KEY(Thumbprint))",0,0,&err);
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS NamedObjects (Name TEXT, Authority TEXT, Signature BLOB, SignedData BLOB)", 0, 0, &err);
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS PrivateKeys (Thumbprint TEXT PRIMARY KEY, PrivateKey BLOB)",0,0,&err);
-        std::string sql = "INSERT INTO Certificates VALUES (?, ?, ?, ?)";
+        std::string sql = "INSERT OR IGNORE INTO Certificates VALUES (?, ?, ?, ?)";
 		const char* parsed;
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addcert, &parsed);
         sql = "INSERT INTO NamedObjects VALUES (?, ?, ?, ?)";
