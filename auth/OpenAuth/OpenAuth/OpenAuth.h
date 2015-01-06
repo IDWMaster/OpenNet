@@ -49,6 +49,10 @@ extern "C" {
     //Finds the trust anchor for a given certificate; as well as an indication of the resolution status
     void OpenNet_ResolveChain(void* db, const char* thumbprint, void* thisptr, void(*callback)(void*, const char*, bool));
     bool OpenNet_UpdateObject(void* db, const char* name, const NamedObject* obj);
+    void OpenNet_AddDomain(void* db, const char* name, const char* parent, const char* objid);
+    void OpenNet_FindReverseDomain(void* db, const char* objid, void* thisptr, void(*callback)(void*,const char*, const char*));
+    void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*));
+
 #ifdef __cplusplus
 }
 #endif

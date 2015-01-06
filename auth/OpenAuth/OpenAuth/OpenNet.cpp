@@ -113,6 +113,10 @@ public:
     sqlite3_stmt* command_findPrivateKey;
     sqlite3_stmt* command_enumerateCertificates;
     sqlite3_stmt* command_updateObject;
+    sqlite3_stmt* command_findDomain;
+    sqlite3_stmt* command_findReverseDomain;
+    sqlite3_stmt* command_addDomain;
+
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates)) != SQLITE_DONE) {
@@ -209,9 +213,18 @@ public:
 		sqlite3_open(GetKeyDbFileName(), &db);
 		char* err;
 		//The thumbprint is a hash of the public key
+		//Certificates (though not necessarily TRUSTED certificates)
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Certificates (Thumbprint TEXT, PublicKey BLOB, Authority TEXT, Signature BLOB, PRIMARY KEY(Thumbprint))",0,0,&err);
+        //Raw object repository
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS NamedObjects (Name TEXT, Authority TEXT, Signature BLOB, SignedData BLOB)", 0, 0, &err);
+        //Private keys
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS PrivateKeys (Thumbprint TEXT PRIMARY KEY, PrivateKey BLOB)",0,0,&err);
+        //Domain metadata table (for fast DNS lookup)
+        //Name = the name of the domain relative to the name of the GUID in Parent
+        //(for root nodes; this value can be NULL)
+        //Parent = The GUID of the parent node.
+        //ObjectID = The actual signed DNS object, validating the identity of the domain.
+        sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Domains (Name TEXT NOT NULL, Parent TEXT, ObjectID TEXT NOT NULL, PRIMARY KEY(Name, Parent)); CREATE INDEX IF NOT EXISTS ReverseLookup ON Domains(ObjectID)",0,0,&err);
         std::string sql = "INSERT OR IGNORE INTO Certificates VALUES (?, ?, ?, ?)";
 		const char* parsed;
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addcert, &parsed);
@@ -231,6 +244,12 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_enumerateCertificates,&parsed);
         sql = "UPDATE NamedObjects SET Authority = ?, Signature = ?, SignedData = ? WHERE Name = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_updateObject,&parsed);
+        sql = "SELECT ObjectID FROM Domains WHERE Name = ? AND Parent = ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findDomain,&parsed);
+        sql = "SELECT Name, Parent FROM Domains WHERE ObjectID = ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
+        sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomain,&parsed);
 
         int status = 0;
         bool hasKey = false;
@@ -325,6 +344,10 @@ public:
         sqlite3_finalize(command_findPrivateKey);
         sqlite3_finalize(command_getPrivateKeys);
         sqlite3_finalize(command_enumerateCertificates);
+        sqlite3_finalize(command_findDomain);
+        sqlite3_finalize(command_findReverseDomain);
+        sqlite3_finalize(command_addDomain);
+
 		sqlite3_close(db);
 	}
 };
@@ -341,6 +364,44 @@ extern "C" {
             }
         }
         sqlite3_reset(realdb->command_getPrivateKeys);
+
+    }
+    void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	sqlite3_bind_text(keydb->command_findDomain,1,domain,strlen(domain),0);
+    	if(parent) {
+    		sqlite3_bind_text(keydb->command_findDomain,2,parent,strlen(parent),0);
+    	}else {
+    		sqlite3_bind_null(keydb->command_findDomain,2);
+    	}
+    	int val;
+    	while((val = sqlite3_step(keydb->command_findDomain)) != SQLITE_DONE) {
+    		if(val == SQLITE_ROW) {
+    			callback(thisptr,(char*)sqlite3_column_text(keydb->command_findDomain,0));
+    		}
+    	}
+    	sqlite3_reset(keydb->command_findDomain);
+
+    }
+    void OpenNet_FindReverseDomain(void* db, const char* objid, void* thisptr, void(*callback)(void*,const char*, const char*)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	auto bot = keydb->command_findReverseDomain;
+    	sqlite3_bind_text(bot,1,objid,strlen(objid),0);
+    	int val;
+    	while((val = sqlite3_step(bot)) != SQLITE_DONE) {
+    		if(val == SQLITE_ROW) {
+    			callback(thisptr,(char*)sqlite3_column_text(bot,0),(char*)sqlite3_column_text(bot,1));
+    		}
+    	}
+    	sqlite3_reset(bot);
+    }
+    void OpenNet_AddDomain(void* db, const char* name, const char* parent, const char* objid) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	auto bot = keydb->command_addDomain;
+    	sqlite3_bind_text(bot,1,name,strlen(name),0);
+    	sqlite3_bind_text(bot,2,parent,strlen(parent),0);
+    	sqlite3_bind_text(bot,3,objid,strlen(objid),0);
+    	while(sqlite3_step(bot) != SQLITE_DONE){};
 
     }
     void* OpenNet_OAuthInitialize() {

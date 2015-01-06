@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include "LightThread.h"
+#include <uuid/uuid.h>
 static size_t replicaCount = 0;
 
 class BStream {
@@ -55,11 +56,80 @@ public:
 	bool* cancellationToken;
 };
 static std::mutex callbacks_mtx;
+//Resolver cache; used to map GUIDs to server identifiers
+static std::map<std::string,std::vector<GlobalGrid_Identifier>> resolverCache;
 static std::map<std::string,Callback> callbacks;
 static std::map<std::string,CertCallback> certCallbacks;
 static void* connectionmanager;
 static void* db;
 static void SendQuery_Raw(const char* name);
+static void processDNS(const char* name) {
+	try {
+	//Attempt to insert/update DNS record
+	void(*callback)(void*,NamedObject*);
+	void* thisptr;
+	NamedObject* val = 0;
+	auto bot = [&](NamedObject* obj){
+		if(obj) {
+			val = obj;
+		}
+	};
+	OpenNet_Retrieve(db,name,thisptr,callback);
+	if(val) {
+		BStream s(val->blob,val->bloblen);
+		//Read DNS-ENC marker
+		if(std::string("DNS-ENC") == s.ReadString()) {
+			//DNS name
+			const char* dname = s.ReadString();
+			if(strlen(dname) == 0) {
+				return;
+			}
+			//DNS parent
+			const char* parent = s.ReadString();
+			//List of authoratitative/replica servers
+			std::vector<std::string> serverlist;
+			while(true) {
+				std::string val = s.ReadString();
+				if(val.size() == 0) {
+					break;
+				}
+				serverlist.push_back(val);
+			}
+			std::vector<GlobalGrid_Identifier> dlist;
+			dlist.resize(serverlist.size());
+			for(size_t i = 0;i<dlist.size();i++) {
+				uuid_parse(serverlist[i].data(),(unsigned char*)dlist[i].value);
+			}
+			resolverCache[name] = dlist;
+			//WE HAVE DNS!!!!
+			//TODO: Verify signature matches and add to database
+			//If we don't have signatures for parent zone; request them, then
+			//resend this request recursively.
+			if(strlen(parent) == 0) {
+				//We are root; add directly to database.
+				OpenNet_AddDomain(db,dname,0,name);
+			}else {
+				//TODO: We are NOT root. Load parent node and check signature
+				NamedObject* parentVal = 0;
+				auto m = [&](NamedObject* obj){
+					parentVal = 0;
+				};
+				void(*cb)(void*,NamedObject*);
+				void* thisptr = C(m,cb);
+				OpenNet_Retrieve(db,parent,thisptr,cb);
+				if(parentVal) {
+					//TODO: Check signature
+				}else {
+					//TODO: Request parent value
+
+				}
+			}
+		}
+	}
+	}catch(const char* er) {
+
+	}
+}
 static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, unsigned char* data, size_t sz) {
     //Received a DNS request; process it
     BStream s(data,sz);
@@ -140,6 +210,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	success = OpenNet_AddObject(db,name,&obj);
         	}
         	if(success) {
+        		processDNS(name);
         		callbacks_mtx.lock();
         		if(callbacks.find(name) != callbacks.end()) {
         			Callback callback = callbacks[name];
@@ -370,7 +441,19 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     delete[] data;
     if(callback) {
     	//TODO: Not yet implemented.
-    callback(thisptr,false);
+    	GlobalGrid_Identifier* ids;
+    	size_t count = GlobalGrid_GetPeerList(connectionmanager,&ids);
+    	if(count<replicaCount) {
+    		callback(thisptr,false);
+    	}else {
+    		for(size_t i = 0;i<count;i++) {
+
+    		}
+    		GlobalGrid_FreePeerList(ids);
+    		callback(thisptr,false);
+    	}
+
+
     }
 }
 
