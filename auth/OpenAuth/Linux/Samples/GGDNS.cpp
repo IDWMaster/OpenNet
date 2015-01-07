@@ -63,6 +63,8 @@ static std::map<std::string,CertCallback> certCallbacks;
 static void* connectionmanager;
 static void* db;
 static void SendQuery_Raw(const char* name);
+template<typename F>
+static void RunQuery(const char* _name, const F& callback);
 static void processDNS(const char* name) {
 	try {
 	//Attempt to insert/update DNS record
@@ -329,6 +331,30 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	}
         }
         	break;
+        case 4:
+        {
+        	//DNS resolution request (similar to New Year's resolution)
+        	const char* dns_name = s.ReadString();
+        	const char* dns_parent = s.ReadString();
+        	std::string name;
+        	auto bot = [&](const char* objname){
+        		if(objname) {
+        			name = objname;
+        		}
+        	};
+        	void(*callback)(void*,const char*);
+        	void* thisptr = C(bot,callback);
+        	OpenNet_FindDomain(db,dns_name,dns_parent,thisptr,callback);
+        	if(name.size()) {
+        		//Fake a query to our own server to search for the object BLOB
+        		unsigned char* request = (unsigned char*)alloca(1+name.size()+1);
+        		*request = 0;
+        		memcpy(request+1,name.data(),name.size()+1);
+        		processRequest(0,src,srcPort,request,1+name.size()+1);
+
+        	}
+        }
+        	break;
         }
     }catch(const char* err) {
     	printf("Error: %s\n",err);
@@ -413,7 +439,44 @@ void GGDNS_SetReplicaCount(size_t count) {
 void GGDNS_EnumPrivateKeys(void* thisptr,bool(*enumCallback)(void*,const char*)) {
     OpenNet_OAuthEnumPrivateKeys(db,thisptr,enumCallback);
 }
-
+void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*callback)(void*,const char*)) {
+	//OPCODE 4
+	size_t allocsz = 1+strlen(name)+1+strlen(parent)+1;
+	unsigned char* request = (unsigned char*)alloca(allocsz);
+	*request = 4;
+	memcpy(request+1,name,strlen(name)+1);
+	memcpy(request+1+strlen(name)+1,parent,strlen(parent));
+	//Check local database
+	std::string objid;
+	auto bot = [&](const char* dname) { //called dname JUST to confuse all those database students
+		objid = dname;
+	};
+	void(*cb)(void*,const char*);
+	void* thisptr = C(bot,cb);
+	OpenNet_FindDomain(db,name,parent,thisptr,cb);
+	if(objid.size()) {
+		callback(tptr,objid.data());
+	}else {
+		//TODO: Send request
+		GlobalGrid_Identifier* list;
+		size_t count = GlobalGrid_GetPeerList(connectionmanager,&list);
+		for(size_t i = 0;i<count;i++) {
+			GlobalGrid_Send(connectionmanager,(unsigned char*)list[i].value,1,1,request,allocsz);
+		}
+		GlobalGrid_FreePeerList(list);
+		//IF we know that a given peer is authoritative for a parent; send it there as well
+		std::vector<GlobalGrid_Identifier> ids;
+		callbacks_mtx.lock();
+		if(resolverCache.find(parent) != resolverCache.end()) {
+			ids = resolverCache[parent];
+		}
+		callbacks_mtx.unlock();
+		for(size_t i = 0;i<ids.size();i++) {
+			GlobalGrid_Send(connectionmanager,(unsigned char*)ids[i].value,1,1,request,allocsz);
+		}
+		callback(tptr,0);
+	}
+}
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
     uint32_t revisionID = 0;
     void(*cm)(void*,NamedObject*);
