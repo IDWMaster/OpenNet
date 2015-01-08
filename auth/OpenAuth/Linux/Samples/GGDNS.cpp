@@ -7,7 +7,7 @@
 #include "LightThread.h"
 #include <uuid/uuid.h>
 static size_t replicaCount = 0;
-
+static size_t timeoutValue = 5000;
 class BStream {
 public:
     unsigned char* ptr;
@@ -243,7 +243,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         		};
         		ccb.cancellationToken = CreateTimer([=](){
         			ccb.callback(false);
-        		},5000);
+        		},timeoutValue);
         		certCallbacks[obj.authority] = ccb;
         		callbacks_mtx.unlock();
         			size_t len = 1+strlen(obj.authority)+1;
@@ -381,7 +381,7 @@ static void SendQuery(const char* name, const F& callback) {
 	callbacks_mtx.lock();
 	Callback cb;
 	cb.callback = callback;
-	cb.cancellationToken = CreateTimer([=](){callback(0);},5000);
+	cb.cancellationToken = CreateTimer([=](){callback(0);},timeoutValue);
 	callbacks[name] = cb;
 	callbacks_mtx.unlock();
     SendQuery_Raw(name);
@@ -476,6 +476,25 @@ void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*c
 		}
 		callback(tptr,0);
 	}
+}
+void GGDNS_SetTimeoutInterval(size_t ms) {
+	timeoutValue = ms;
+}
+void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t)) {
+	std::string name = objid;
+	RunQuery(objid,[=](NamedObject* obj){
+		if(obj) {
+			//WE HAVE THE OBJECT!
+			processDNS(objid);
+			callbacks_mtx.lock();
+			std::vector<GlobalGrid_Identifier> ids = resolverCache[objid];
+			callbacks_mtx.unlock();
+			callback(thisptr,ids.data(),ids.size());
+
+		}else {
+			callback(thisptr,0,0);
+		}
+	});
 }
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
     uint32_t revisionID = 0;

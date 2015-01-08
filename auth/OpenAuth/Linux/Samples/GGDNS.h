@@ -17,6 +17,9 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
 //successfully replicated will still be added to your local database instance,
 //and may also be cached on other database servers if those objects are requested.
 void GGDNS_SetReplicaCount(size_t count);
+void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*callback)(void*,const char*));
+void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t));
+void GGDNS_SetTimeoutInterval(size_t ms);
 #ifdef __cplusplus
 }
 #endif
