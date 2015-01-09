@@ -70,15 +70,21 @@ static void processDNS(const char* name) {
 	//Attempt to insert/update DNS record
 	void(*callback)(void*,NamedObject*);
 	void* thisptr;
-	NamedObject* val = 0;
+	std::vector<unsigned char> data;
 	auto bot = [&](NamedObject* obj){
+		printf("%p\n",obj);
 		if(obj) {
-			val = obj;
+			data.resize(obj->bloblen-4);
+			memcpy(data.data(),obj->blob+4,data.size());
 		}
 	};
+	thisptr = C(bot,callback);
 	OpenNet_Retrieve(db,name,thisptr,callback);
-	if(val) {
-		BStream s(val->blob,val->bloblen);
+	if(data.size() == 0) {
+		printf("Couldn't find %s\n",name);
+	}
+	if(data.size()) {
+		BStream s(data.data(),data.size());
 		//Read DNS-ENC marker
 		if(std::string("DNS-ENC") == s.ReadString()) {
 			//DNS name
@@ -430,6 +436,7 @@ db = OpenNet_OAuthInitialize();
 
 
 extern "C" {
+void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool));
 void GGDNS_Init(void* manager) {
     GGDNS_Initialize(manager);
 }
@@ -484,17 +491,61 @@ void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)
 	std::string name = objid;
 	RunQuery(objid,[=](NamedObject* obj){
 		if(obj) {
-			//WE HAVE THE OBJECT!
-			processDNS(objid);
-			callbacks_mtx.lock();
-			std::vector<GlobalGrid_Identifier> ids = resolverCache[objid];
-			callbacks_mtx.unlock();
-			callback(thisptr,ids.data(),ids.size());
+			SubmitWork([=](){
+
+				//WE HAVE THE OBJECT!
+				processDNS(objid);
+				callbacks_mtx.lock();
+				std::vector<GlobalGrid_Identifier> ids = resolverCache[objid];
+				callbacks_mtx.unlock();
+				callback(thisptr,ids.data(),ids.size());
+			});
 
 		}else {
 			callback(thisptr,0,0);
 		}
 	});
+}
+void GGDNS_MakeDomain(const char* name, const char* parent, const char* authority) {
+
+	unsigned char mid[16];
+	GlobalGrid_GetID(connectionmanager,mid);
+	char mid_s[256];
+	uuid_unparse(mid,mid_s);
+	size_t sz = strlen("DNS-ENC")+1+strlen(name)+1+strlen(parent)+1+strlen(mid_s)+1+1;
+	unsigned char* mander = new unsigned char[sz];
+	unsigned char* izard = mander;
+	size_t s = strlen("DNS-ENC")+1;
+	//DNS-ENC
+	memcpy(izard,"DNS-ENC",s);
+	izard+=s;
+	//DNS name
+	s = strlen(name)+1;
+	memcpy(izard,name,s);
+	izard+=s;
+	//DNS parent
+	s = strlen(parent)+1;
+	memcpy(izard,parent,s);
+	izard+=s;
+	//GUID list
+	s = strlen(mid_s)+1;
+	memcpy(izard,mid_s,s);
+	izard+=s;
+	*izard = 0;
+	unsigned char guid[16];
+	uuid_generate(guid);
+	char output[256];
+	uuid_unparse(guid,output);
+	NamedObject obj;
+	obj.authority = (char*)authority;
+	obj.blob = mander;
+	obj.bloblen = sz;
+	auto bot = [=](bool success){};
+	void(*cb)(void*,bool);
+	void* tp = C(bot,cb);
+	GGDNS_MakeObject(output,&obj,tp,cb);
+	delete[] mander;
+	OpenNet_AddDomain(db,name,parent,output);
 }
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
     uint32_t revisionID = 0;

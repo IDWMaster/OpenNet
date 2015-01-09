@@ -18,7 +18,7 @@
 #include <GGDNS.h>
 #include <string>
 #include <OpenAuth.h>
-
+#include <uuid/uuid.h>
 
 #include <functional>
 
@@ -45,7 +45,7 @@ auto readline = [&](){
 	return std::string(buffer);
 };
 std::function<void()> menu = [&]() {
-	printf("\n\n0. Run GGDNS query\n1. Add GGDNS object\nPlease enter a selection: ");
+	printf("\n\n0. Run GGDNS query\n1. Add GGDNS object\n2. Add GGDNS domain\n3. Query for DNS locator\n4. List authoritative servers for domain\nPlease enter a selection: ");
 	std::string input = readline();
 	switch(input[0]) {
 	case '0':
@@ -87,6 +87,52 @@ std::function<void()> menu = [&]() {
 		GGDNS_MakeObject(id.data(),&obj,0,0);
 		printf("Object created successfully.\n");
 		menu();
+	}
+		break;
+	case '2':
+	{
+		printf("Enter parent authoritative domain: ");
+		std::string parent = readline();
+		printf("Enter name of domain: ");
+		std::string dname = readline();
+		GGDNS_MakeDomain(dname.data(),parent.data(),thumbprint.data());
+		printf("Domain created successfully\n");
+	}
+		break;
+	case '3':
+	{
+		printf("Enter parent authoritative domain:");
+		std::string parent = readline();
+		printf("Enter name of domain: ");
+		std::string dname = readline();
+		void(*cb)(void*,const char*);
+		thisptr = C([=](const char* val){
+			printf("%s\n",val);
+		},cb);
+		GGDNS_QueryDomain(dname.data(),parent.data(),thisptr,cb);
+	}
+		break;
+	case '4':
+	{
+		printf("Enter object ID: ");
+		std::string id = readline();
+		auto bot = [=](GlobalGrid_Identifier* list, size_t count){
+			if(list) {
+
+
+			for(size_t i = 0;i<count;i++) {
+				char mander[256];
+				uuid_unparse((unsigned char*)list[i].value,mander);
+				printf("%s\n",mander);
+			}
+			}else {
+				printf("Error: Pikachu!\n");
+			}
+		};
+		void(*cb)(void*,GlobalGrid_Identifier*,size_t);
+		thisptr = C(bot,cb);
+		GGDNS_GetGuidListForObject(id.data(),thisptr,cb);
+
 	}
 		break;
 	}

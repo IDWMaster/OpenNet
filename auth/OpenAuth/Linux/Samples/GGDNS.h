@@ -20,6 +20,7 @@ void GGDNS_SetReplicaCount(size_t count);
 void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*callback)(void*,const char*));
 void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t));
 void GGDNS_SetTimeoutInterval(size_t ms);
+void GGDNS_MakeDomain(const char* name, const char* parent, const char* authority);
 #ifdef __cplusplus
 }
 #endif

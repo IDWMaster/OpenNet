@@ -399,7 +399,11 @@ extern "C" {
     	KeyDatabase* keydb = (KeyDatabase*)db;
     	auto bot = keydb->command_addDomain;
     	sqlite3_bind_text(bot,1,name,strlen(name),0);
+    	if(parent) {
     	sqlite3_bind_text(bot,2,parent,strlen(parent),0);
+    	}else{
+    		sqlite3_bind_null(bot,2);
+    	}
     	sqlite3_bind_text(bot,3,objid,strlen(objid),0);
     	while(sqlite3_step(bot) != SQLITE_DONE){};
 
