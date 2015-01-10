@@ -21,13 +21,18 @@
 #include <uuid/uuid.h>
 
 #include <functional>
-
 int main(int argc, char** argv) {
 
     GlobalGrid::P2PConnectionManager mngr;
 GlobalGrid::InternetProtocol ip(5809,&mngr);
 mngr.RegisterProtocol(&ip);
 GGDNS_Init(mngr.nativePtr);
+
+
+
+
+
+
 //Script it. Automated tests for GlobalGrid GGDNS integration
 printf("Scanning for private key....\n");
 std::string thumbprint;
