@@ -24,7 +24,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <openssl/evp.h>
-
+#include "LightThread.h"
 
 
 //FS BEGIN
@@ -160,6 +160,18 @@ public:
 			uint64_t alignment = offset % 4096;
 			uint64_t avail = std::min(4096-alignment,count);
 			//TODO: Finish this
+			unsigned char sector[4096];
+			if(alignment) {
+				Event evt;
+				ReadBlock(alignedSector,[=](unsigned char* c_c){
+					memcpy(sector,c_c,4096);
+					evt.signal();
+				});
+				evt.wait();
+			}
+			memcpy(sector+alignment,mander,avail);
+			//Write sector to disk -- replication happens asynchronously and is invisible to the application
+			WriteBlock(alignedSector,sector);
 		}
 	}
 	FS_Stream(const std::string& begin, unsigned char* key) {
