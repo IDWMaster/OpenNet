@@ -32,7 +32,9 @@
 
 template<typename F, typename... args>
 static void CallHeapFunction(void* val, args... uments) {
+	printf("Invoking Bach\n");
 	(*((F*)val))(uments...);
+	printf("Bach is Bach\n");
 	delete (F*)val;
 }
 template<typename T, typename... args>
@@ -40,7 +42,7 @@ static void* MakeHeapFunction(const T& val, void(*&callback)(void*,args...)) {
 	callback = &CallHeapFunction<T,args...>;
 	return new T(val);
 }
-
+static std::string auth;
 class FS_Stream {
 public:
 	unsigned char start[16];
@@ -62,7 +64,7 @@ public:
 	template<typename F>
 	void Sector_Read(const std::string& id, const F& callback) {
 		void(*cb)(void* thisptr,NamedObject* obj);
-		void* thisptr = MakeHeapFunction([=](NamedObject* obj){
+		auto bot = [=](NamedObject* obj){
 			if(obj) {
 				if(obj->bloblen != 4096) {
 					//Illegal/invalid block length
@@ -71,18 +73,23 @@ public:
 					callback(mander);
 				}else {
 					//Decrypt
+					unsigned char buffy[4096];
+
+					memcpy(buffy,obj->blob,obj->bloblen);
 					int len = 4096;
-					EVP_DecryptUpdate(&dec,obj->blob,&len,obj->blob,4096);
+					EVP_DecryptUpdate(&dec,buffy,&len,buffy,4096);
 					unsigned char mid[16];
 					uuid_parse(id.data(),mid);
-					XORBlock(obj->blob,mid);
+					XORBlock(buffy,mid);
+					callback(buffy);
 				}
 			}else {
 				unsigned char mander[4096];
 				memset(mander,0,4096);
 				callback(mander);
 			}
-		},cb);
+		};
+		void* thisptr = MakeHeapFunction(bot,cb);
 		GGDNS_RunQuery(id.data(),thisptr,cb);
 	}
 	void Sector_Write(const std::string& id, const unsigned char* data) {
@@ -92,8 +99,11 @@ public:
 		uuid_parse(id.data(),mid);
 		XORBlock(izard,mid);
 		int l = 4096;
-		EVP_EncryptUpdate(&enc,izard,&l,data,4096);
+		EVP_EncryptUpdate(&enc,izard,&l,izard,4096);
 		NamedObject obj;
+		obj.authority = (char*)auth.data();
+		obj.blob = izard;
+		obj.bloblen = 4096;
 		//TODO: Later; add a callback which can be used to test when writes have finished replicating
 		GGDNS_MakeObject(id.data(),&obj,0,0);
 
@@ -108,6 +118,7 @@ public:
 		char mander[256];
 		uuid_unparse((unsigned char*)rawID,mander);
 		Sector_Read(mander,[=](unsigned char* izard){
+			printf("Received data from sector read %p\n",izard+sectorOffset);
 			callBach(izard+sectorOffset);
 		});
 	}
@@ -137,6 +148,7 @@ public:
 		heapStats->dptr = mander;
 		auto bot = [=](unsigned char* sector) {
 
+			printf("HEAPS of fun!\n");
 			uint64_t alignOffset = heapStats->offset % 4096;
 			uint64_t avail = std::min(heapStats->count,4096-alignOffset);
 			memcpy(heapStats->dptr,sector+alignOffset,avail);
@@ -153,7 +165,7 @@ public:
 			}
 		};
 		heapStats->cb = bot;
-		ReadBlock((offset/4096)*4096,bot);
+		ReadBlock((offset/4096)*4096,heapStats->cb);
 	}
 	void Write(uint64_t offset, uint64_t count, unsigned char* mander) {
 		while(count>0) {
@@ -173,6 +185,9 @@ public:
 			memcpy(sector+alignment,mander,avail);
 			//Write sector to disk -- replication happens asynchronously and is invisible to the application
 			WriteBlock(alignedSector,sector);
+			count-=avail;
+			offset+=avail;
+			mander+=avail;
 		}
 	}
 
@@ -181,11 +196,16 @@ public:
 		//Deterministic sector generation
 		//Take the base sector GUID, and XOR with sector offset ID
 		sector_size = 1024*4;
+		unsigned char iv[32];
+		memset(iv,0,32);
 		EVP_CIPHER_CTX_init(&enc);
 		EVP_CIPHER_CTX_init(&dec);
-		EVP_EncryptInit_ex(&enc,EVP_aes_256_ecb(),0,key,0);
-		EVP_EncryptInit_ex(&dec,EVP_aes_256_ecb(),0,key,0);
+		EVP_EncryptInit_ex(&enc,EVP_aes_256_ecb(),0,key,iv);
+		EVP_DecryptInit_ex(&dec,EVP_aes_256_ecb(),0,key,iv);
+		EVP_CIPHER_CTX_set_padding(&enc,0);
+		EVP_CIPHER_CTX_set_padding(&dec,0);
 
+		GGDNS_SetTimeoutInterval(100);
 	}
 	~FS_Stream() {
 		EVP_CIPHER_CTX_cleanup(&enc);
@@ -262,9 +282,9 @@ static int getaddr(const char *path, struct stat *stbuf)
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
 	} else if (strcmp(path, "/bdev") == 0) {
-		stbuf->st_mode = S_IFREG | 0444;
+		stbuf->st_mode = S_IFREG | 0777;
 		stbuf->st_nlink = 1;
-		stbuf->st_size = -1;
+		stbuf->st_size = 1024*1024*500;
 	} else
 		res = -ENOENT;
 
@@ -276,8 +296,6 @@ static int oauth_open(const char *path, struct fuse_file_info *fi)
 	if (strcmp(path, "/bdev") != 0)
 		return -ENOENT;
 
-	if ((fi->flags & 3) != O_RDONLY)
-		return -EACCES;
 
 	return 0;
 }
@@ -313,10 +331,12 @@ static int oauth_write(const char *path, const char *buf, size_t size, off_t off
 
 void fs_drv(const char* objname, unsigned char* encKey) {
 dev = new FS_Stream(objname,encKey);
-	char* args[3];
+	char* args[5];
 args[0] = path;
 args[1] = "-s";
 args[2] = "mntpnt";
+args[3] = "-f";
+args[4] = "-d";
 struct fuse_operations operations;
 memset(&operations,0,sizeof(operations));
 operations.getattr = getaddr;
@@ -324,6 +344,13 @@ operations.readdir = oath_readdir;
 operations.open = oauth_open;
 operations.read = oauth_read;
 operations.write = oauth_write;
+/*const char* mander = "Hello world!";
+dev->Write(0,strlen(mander),(unsigned char*)mander);
+dev->Read(0,4096,[=](unsigned char* dat){
+	printf("%s\n",(char*)dat);
+});*/
+//sleep(-1);
+fuse_main(5,args,&operations,0);
 }
 
 
@@ -334,6 +361,14 @@ GlobalGrid::InternetProtocol ip(5809,&mngr);
 mngr.RegisterProtocol(&ip);
 GGDNS_Init(mngr.nativePtr);
 if(argc == 2) {
+	std::string thumbprint;
+	bool(*enumCallback)(void*, const char*);
+	void* thisptr = C([&](const char* name){
+	    thumbprint = name;
+	    return false;
+	},enumCallback);
+	GGDNS_EnumPrivateKeys(thisptr,enumCallback);
+	auth = thumbprint;
 	//Grace period to allow for network to wake up
 	sleep(2);
 	//Read GUID from argv[1]
