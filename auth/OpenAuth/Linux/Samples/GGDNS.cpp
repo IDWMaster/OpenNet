@@ -361,6 +361,28 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	}
         }
         	break;
+        case 5:
+        	break; //TODO: Uncomment this line to enable DMCA takedown compliance toolkit
+        	//TODO: DMCA takedown request; only process if signed by valid DMCA authority
+        	char* authority = s.ReadString();
+        	uint32_t reqlen;
+        	s.Read(reqlen);
+        	//Create virtual cryptographic "buffer"
+        	unsigned char* cryptBuffer = s.Increment(reqlen);
+        	uint32_t slen;
+        	s.Read(slen);
+        	unsigned char* sigBuffer = s.Increment(slen);
+        	unsigned char pubkey[] = {0, 0, 0, 0, 0}; //put DMCA authority public key here
+        	if(authority == "TODO: PUT DMCA AGENT STRING HERE") {
+
+        		if(VerifySignature(cryptBuffer,reqlen,sigBuffer,slen,pubkey)) {
+        			//Process takedown request
+        			BStream k(cryptBuffer,reqlen);
+        			char* blobID = k.ReadString();
+        			DMCA_TakedownBlob(db,blobID); //TODO: Implement this
+        		}
+        	}
+        	break;
         }
     }catch(const char* err) {
     	printf("Error: %s\n",err);

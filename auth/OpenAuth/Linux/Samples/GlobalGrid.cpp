@@ -21,14 +21,132 @@
 #include <uuid/uuid.h>
 
 #include <functional>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <openssl/evp.h>
+
+
+
+//FS BEGIN
+
+template<typename F, typename... args>
+static void CallHeapFunction(F* val, args... uments) {
+	(*val)(uments...);
+	delete val;
+}
+template<typename T, typename... args>
+static void* MakeHeapFunction(const T& val, void(*&callback)(void*,args...)) {
+	callback = &CallHeapFunction<T,args...>;
+	return new T(val);
+}
+
+class FS_Stream {
+public:
+	std::string start;
+	uint32_t sector_size;
+	unsigned char key[32];
+	EVP_CIPHER_CTX enc;
+	EVP_CIPHER_CTX dec;
+	//XORs a block with a specified sector ID and sub-block ID (in GUID binary format)
+	void XORBlock(unsigned char* block, unsigned char* src) {
+		uint64_t alignedDest[512];
+		uint64_t alignedSrc[2];
+		memcpy(alignedDest,block,4096);
+		memcpy(alignedSrc,src,16);
+		for(size_t i = 0;i<512;i++) {
+			alignedDest[i] ^= alignedSrc[i % 2] ^ i;
+		}
+		memcpy(block,alignedDest,4096);
+	}
+	template<typename F>
+	void Sector_Read(const std::string& id, const F& callback) {
+		void(*cb)(void* thisptr,NamedObject* obj);
+		void* thisptr = MakeHeapFunction([=](NamedObject* obj){
+			if(obj) {
+				if(obj->bloblen != 4096) {
+					//Illegal/invalid block length
+					unsigned char mander[4096];
+					memset(mander,0,4096);
+					callback(mander);
+				}else {
+					//Decrypt
+					int len = 4096;
+					EVP_DecryptUpdate(&dec,obj->blob,&len,obj->blob,4096);
+					unsigned char mid[16];
+					uuid_parse(id.data(),mid);
+					XORBlock(obj->blob,mid);
+				}
+			}else {
+				unsigned char mander[4096];
+				memset(mander,0,4096);
+				callback(mander);
+			}
+		},cb);
+		GGDNS_RunQuery(id.data(),thisptr,cb);
+	}
+	void Sector_Write(const std::string& id, const unsigned char* data) {
+		unsigned char izard[4096];
+		memcpy(izard,data,4096);
+		unsigned char mid[16];
+		uuid_parse(id.data(),mid);
+		XORBlock(izard,mid);
+		int l = 4096;
+		EVP_EncryptUpdate(&enc,izard,&l,data,4096);
+		NamedObject obj;
+		//TODO: Later; add a callback which can be used to test when writes have finished replicating
+		GGDNS_MakeObject(id.data(),&obj,0,0);
+
+	}
+	FS_Stream(const std::string& begin, unsigned char* key) {
+		start = begin;
+		//Read in extent table
+		sector_size = 1024*4;
+		EVP_CIPHER_CTX_init(&enc);
+		EVP_CIPHER_CTX_init(&dec);
+		EVP_EncryptInit_ex(&enc,EVP_aes_256_ecb(),0,key,0);
+		EVP_EncryptInit_ex(&dec,EVP_aes_256_ecb(),0,key,0);
+
+	}
+
+};
+
+
+
+
+
+
+
+//FS END
+
+
+
+
+void fs_drv(const char* objname, unsigned char* encKey) {
+
+}
+
+
 int main(int argc, char** argv) {
 
     GlobalGrid::P2PConnectionManager mngr;
 GlobalGrid::InternetProtocol ip(5809,&mngr);
 mngr.RegisterProtocol(&ip);
 GGDNS_Init(mngr.nativePtr);
-
-
+if(argc == 2) {
+	//Grace period to allow for network to wake up
+	sleep(2);
+	//Read GUID from argv[1]
+	std::string root = argv[1];
+	//Read encryption key
+	unsigned char enc_key[32];
+	read(STDIN_FILENO,enc_key,32);
+	fs_drv(root.data(),enc_key);
+	memset(enc_key,0,32);
+	return 0;
+}
+if(mngr.nativePtr == 0) {
+    printf("NOTE: Simulated GlobalGrid environment detected -- database changes will only be visible on local network. For access to global database, please purchase a GlobalGrid license.\n");
+}
 
 
 
@@ -50,7 +168,7 @@ auto readline = [&](){
 	return std::string(buffer);
 };
 std::function<void()> menu = [&]() {
-	printf("\n\n0. Run GGDNS query\n1. Add GGDNS object\n2. Add GGDNS domain\n3. Query for DNS locator\n4. List authoritative servers for domain\nPlease enter a selection: ");
+	printf("\n\n0. Run GGDNS query\n1. Add GGDNS object\n2. Add GGDNS domain\n3. Query for DNS locator\n4. List authoritative servers for domain\n5. Mount filesystem\nPlease enter a selection: ");
 	std::string input = readline();
 	switch(input[0]) {
 	case '0':
@@ -60,7 +178,7 @@ std::function<void()> menu = [&]() {
 		std::mutex m;
 		std::condition_variable evt;
 		std::unique_lock<std::mutex> l(m);
-		void(*callback)(void*,NamedObject*);
+        void(*callback)(void*,NamedObject*);
 		bool c = false;
 		void* thisptr = C([&](NamedObject* obj){
 			if(obj) {
@@ -138,6 +256,13 @@ std::function<void()> menu = [&]() {
 		thisptr = C(bot,cb);
 		GGDNS_GetGuidListForObject(id.data(),thisptr,cb);
 
+	}
+		break;
+	case '5':
+	{
+		//Mount filesystem
+		printf("===================================\nFS MOUNT INSTRUCTIONS\n===================================\nTo mount the filesystem; please specify the filesystem GUID at the command line, and pipe the encryption key to stdin.\n\n\n\n");
+		abort();
 	}
 		break;
 	}

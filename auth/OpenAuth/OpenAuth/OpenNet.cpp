@@ -116,7 +116,8 @@ public:
     sqlite3_stmt* command_findDomain;
     sqlite3_stmt* command_findReverseDomain;
     sqlite3_stmt* command_addDomain;
-
+    sqlite3_stmt* command_addReplica;
+    sqlite3_stmt* command_takedownBlob;
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates)) != SQLITE_DONE) {
@@ -225,6 +226,8 @@ public:
         //Parent = The GUID of the parent node.
         //ObjectID = The actual signed DNS object, validating the identity of the domain.
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Domains (Name TEXT NOT NULL, Parent TEXT, ObjectID TEXT NOT NULL, PRIMARY KEY(Name, Parent)); CREATE INDEX IF NOT EXISTS ReverseLookup ON Domains(ObjectID)",0,0,&err);
+        //Replica server list (per-object)
+        sqlite3_exec(db,"CREATE TABLE IF NOT EXISTS Replicas (ObjectName TEXT, ServerID TEXT, PRIMARY KEY(ObjectName, ServerID))",0,0,&err);
         std::string sql = "INSERT OR IGNORE INTO Certificates VALUES (?, ?, ?, ?)";
 		const char* parsed;
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addcert, &parsed);
@@ -250,6 +253,10 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
         sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomain,&parsed);
+        sql = "INSERT OR IGNORE INTO Replicas VALUES (?, ?)";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addReplica,&parsed);
+        sql = "DELETE FROM NamedObjects WHERE Name = ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_takedownBlob,&parsed);
 
         int status = 0;
         bool hasKey = false;
@@ -347,12 +354,20 @@ public:
         sqlite3_finalize(command_findDomain);
         sqlite3_finalize(command_findReverseDomain);
         sqlite3_finalize(command_addDomain);
-
+        sqlite3_finalize(command_addReplica);
+        sqlite3_finalize(command_takedownBlob);
 		sqlite3_close(db);
 	}
 };
-
 extern "C" {
+
+
+
+	void OpenNet_OAuthAddReplicaServer(void* db, const char* object, const char* server) {
+		KeyDatabase* realdb = (KeyDatabase*)db;
+
+	}
+
     void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint)) {
         KeyDatabase* realdb = (KeyDatabase*)db;
         int status;
@@ -523,7 +538,11 @@ extern "C" {
     		}
     	}
     }
-
+    void DMCA_TakedownBlob(void* db,const char* name) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	while(sqlite3_step(keydb->command_takedownBlob) != SQLITE_DONE) {}
+    	sqlite3_reset(keydb->command_takedownBlob);
+    }
     void OpenNet_Retrieve(void* db, const char* name, void* thisptr, void(*callback)(void *, NamedObject *)) {
         KeyDatabase* keydb = (KeyDatabase*)db;
         keydb->RetrieveObject(name,thisptr,callback);
