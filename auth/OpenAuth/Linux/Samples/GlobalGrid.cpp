@@ -42,7 +42,7 @@ static void* MakeHeapFunction(const T& val, void(*&callback)(void*,args...)) {
 
 class FS_Stream {
 public:
-	std::string start;
+	unsigned char start[16];
 	uint32_t sector_size;
 	unsigned char key[32];
 	EVP_CIPHER_CTX enc;
@@ -97,9 +97,75 @@ public:
 		GGDNS_MakeObject(id.data(),&obj,0,0);
 
 	}
+	template<typename T>
+	void ReadBlock(uint64_t offset, const T& callBach) {
+		uint64_t sectorID = offset / 4096;
+		uint64_t sectorOffset = offset % 4096;
+		uint64_t rawID[2];
+		memcpy(rawID,start,16);
+		rawID[1] ^= sectorID;
+		char mander[256];
+		uuid_unparse((unsigned char*)rawID,mander);
+		Sector_Read(mander,[=](unsigned char* izard){
+			callBach(izard+sectorOffset);
+		});
+	}
+	void WriteBlock(uint64_t offset, const unsigned char* data) {
+		uint64_t sectorID = offset / 4096;
+		uint64_t sectorOffset = offset % 4096;
+		uint64_t rawID[2];
+		memcpy(rawID,start,16);
+		rawID[1] ^= sectorID;
+		char mander[256];
+		uuid_unparse((unsigned char*)rawID,mander);
+		Sector_Write(mander,data);
+	}
+	class HeapStats {
+	public:
+		uint64_t offset;
+		uint64_t count;
+		unsigned char* dptr;
+		std::function<void(unsigned char*)> cb;
+	};
+	template<typename T>
+	void Read(uint64_t offset, uint64_t count, const T& callBeethoven) {
+		unsigned char* mander = new unsigned char[count];
+		auto heapStats = new HeapStats();
+		heapStats->count = count;
+		heapStats->offset = offset;
+		heapStats->dptr = mander;
+		auto bot = [=](unsigned char* sector) {
+
+			uint64_t alignOffset = heapStats->offset % 4096;
+			uint64_t avail = std::min(heapStats->count,4096-alignOffset);
+			memcpy(heapStats->dptr,sector+alignOffset,avail);
+			heapStats->count-=avail;
+			heapStats->offset+=avail;
+			if(heapStats->count == 0) {
+				//Call up the dead guy who's decomposing a TON of music
+				//(MUCH more accomplished than Bach ever was!)
+				callBeethoven(mander);
+				delete heapStats;
+				delete[] mander;
+			}else {
+				ReadBlock((heapStats->offset/4096)*4096,heapStats->cb);
+			}
+		};
+		heapStats->cb = bot;
+		ReadBlock((offset/4096)*4096,bot);
+	}
+	void Write(uint64_t offset, uint64_t count, unsigned char* mander) {
+		while(count>0) {
+			uint64_t alignedSector = (offset/4096)*4096;
+			uint64_t alignment = offset % 4096;
+			uint64_t avail = std::min(4096-alignment,count);
+			//TODO: Finish this
+		}
+	}
 	FS_Stream(const std::string& begin, unsigned char* key) {
-		start = begin;
-		//Read in extent table
+		uuid_parse(begin.data(),start);
+		//Deterministic sector generation
+		//Take the base sector GUID, and XOR with sector offset ID
 		sector_size = 1024*4;
 		EVP_CIPHER_CTX_init(&enc);
 		EVP_CIPHER_CTX_init(&dec);
