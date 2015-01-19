@@ -10,8 +10,8 @@
  * embedded and iOS systems.
  *************************************************************/
 
-
-
+#define FUSE_USE_VERSION 26
+#define _FILE_OFFSET_BITS 64
 #include <iostream>
 #include <GlobalGrid.h>
 #include <InternetProtocol.h>
@@ -25,14 +25,15 @@
 #include <fcntl.h>
 #include <openssl/evp.h>
 #include "LightThread.h"
-
-
+#include <memory>
+#include <fuse/fuse.h>
+#include <errno.h>
 //FS BEGIN
 
 template<typename F, typename... args>
-static void CallHeapFunction(F* val, args... uments) {
-	(*val)(uments...);
-	delete val;
+static void CallHeapFunction(void* val, args... uments) {
+	(*((F*)val))(uments...);
+	delete (F*)val;
 }
 template<typename T, typename... args>
 static void* MakeHeapFunction(const T& val, void(*&callback)(void*,args...)) {
@@ -163,7 +164,7 @@ public:
 			unsigned char sector[4096];
 			if(alignment) {
 				Event evt;
-				ReadBlock(alignedSector,[=](unsigned char* c_c){
+				ReadBlock(alignedSector,[&](unsigned char* c_c){
 					memcpy(sector,c_c,4096);
 					evt.signal();
 				});
@@ -174,6 +175,7 @@ public:
 			WriteBlock(alignedSector,sector);
 		}
 	}
+
 	FS_Stream(const std::string& begin, unsigned char* key) {
 		uuid_parse(begin.data(),start);
 		//Deterministic sector generation
@@ -185,27 +187,148 @@ public:
 		EVP_EncryptInit_ex(&dec,EVP_aes_256_ecb(),0,key,0);
 
 	}
+	~FS_Stream() {
+		EVP_CIPHER_CTX_cleanup(&enc);
+		EVP_CIPHER_CTX_cleanup(&dec);
+	}
+
+};
+
+class FS_Node {
+public:
+	char name[256];
+	unsigned char sector[16];
+	bool operator<(const FS_Node& other) const {
+		return strcmp(name,other.name) < 0;
+	}
+	bool operator==(const FS_Node& other) const {
+		return strcmp(name,other.name) == 0;
+	}
+};
+class FS_Dir {
+public:
+	FS_Stream* str;
+	FS_Dir(FS_Stream* stream) {
+		str = stream;
+	}
+	template<typename F>
+	void GetNode(uint64_t index, const F& callback) {
+		str->Read(index*sizeof(FS_Node),sizeof(FS_Node),[=](unsigned char* mander){
+			FS_Node retval;
+			memcpy(&retval,mander,sizeof(retval));
+			callback(retval);
+		});
+	}
+	template<typename F>
+	void Enumerate(const F& callback) {
+		//TODO: Finland
+	}
+	~FS_Dir() {
+		delete str;
+	}
 
 };
 
 
 
 
-
-
-
 //FS END
+static FS_Stream* dev;
+
+char* path;
+static int oath_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+			 off_t offset, struct fuse_file_info *fi)
+{
+	(void) offset;
+	(void) fi;
+
+	if (strcmp(path, "/") != 0)
+		return -ENOENT;
+
+	filler(buf, ".", NULL, 0);
+	filler(buf, "..", NULL, 0);
+	filler(buf, "bdev", NULL, 0);
+
+	return 0;
+}
 
 
+static int getaddr(const char *path, struct stat *stbuf)
+{
+	int res = 0;
 
+	memset(stbuf, 0, sizeof(struct stat));
+	if (strcmp(path, "/") == 0) {
+		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_nlink = 2;
+	} else if (strcmp(path, "/bdev") == 0) {
+		stbuf->st_mode = S_IFREG | 0444;
+		stbuf->st_nlink = 1;
+		stbuf->st_size = -1;
+	} else
+		res = -ENOENT;
+
+	return res;
+}
+
+static int oauth_open(const char *path, struct fuse_file_info *fi)
+{
+	if (strcmp(path, "/bdev") != 0)
+		return -ENOENT;
+
+	if ((fi->flags & 3) != O_RDONLY)
+		return -EACCES;
+
+	return 0;
+}
+
+static int oauth_read(const char *path, char *buf, size_t size, off_t offset,
+		      struct fuse_file_info *fi)
+{
+	size_t len;
+	(void) fi;
+	if(strcmp(path, "/bdev") != 0)
+		return -ENOENT;
+
+	Event evt;
+	dev->Read(offset,size,[&](unsigned char* mander){
+		memcpy(buf,mander,size);
+		evt.signal();
+	});
+	evt.wait();
+	return size;
+}
+static int oauth_write(const char *path, const char *buf, size_t size, off_t offset,
+		      struct fuse_file_info *fi)
+{
+	size_t len;
+	(void) fi;
+	if(strcmp(path, "/bdev") != 0)
+		return -ENOENT;
+
+	dev->Write(offset,size,(unsigned char*)buf);
+
+	return size;
+}
 
 void fs_drv(const char* objname, unsigned char* encKey) {
-
+dev = new FS_Stream(objname,encKey);
+	char* args[3];
+args[0] = path;
+args[1] = "-s";
+args[2] = "mntpnt";
+struct fuse_operations operations;
+memset(&operations,0,sizeof(operations));
+operations.getattr = getaddr;
+operations.readdir = oath_readdir;
+operations.open = oauth_open;
+operations.read = oauth_read;
+operations.write = oauth_write;
 }
 
 
 int main(int argc, char** argv) {
-
+path = argv[0];
     GlobalGrid::P2PConnectionManager mngr;
 GlobalGrid::InternetProtocol ip(5809,&mngr);
 mngr.RegisterProtocol(&ip);
