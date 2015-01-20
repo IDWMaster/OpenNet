@@ -569,6 +569,9 @@ void GGDNS_MakeDomain(const char* name, const char* parent, const char* authorit
 	delete[] mander;
 	OpenNet_AddDomain(db,name,parent,output);
 }
+void* GGDNS_db() {
+	return db;
+}
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
     uint32_t revisionID = 0;
     void(*cm)(void*,NamedObject*);

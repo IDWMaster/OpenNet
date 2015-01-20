@@ -300,6 +300,7 @@ static int oauth_open(const char *path, struct fuse_file_info *fi)
 	return 0;
 }
 
+static bool transaction = false;
 static int oauth_read(const char *path, char *buf, size_t size, off_t offset,
 		      struct fuse_file_info *fi)
 {
@@ -323,7 +324,10 @@ static int oauth_write(const char *path, const char *buf, size_t size, off_t off
 	(void) fi;
 	if(strcmp(path, "/bdev") != 0)
 		return -ENOENT;
-
+if(!transaction) {
+	transaction = true;
+	OpenNet_BeginTransaction(GGDNS_db());
+}
 	dev->Write(offset,size,(unsigned char*)buf);
 
 	return size;

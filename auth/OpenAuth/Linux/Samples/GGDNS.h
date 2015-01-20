@@ -21,6 +21,7 @@ void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*c
 void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t));
 void GGDNS_SetTimeoutInterval(size_t ms);
 void GGDNS_MakeDomain(const char* name, const char* parent, const char* authority);
+void* GGDNS_db();
 #ifdef __cplusplus
 }
 #endif

@@ -53,6 +53,9 @@ extern "C" {
     void OpenNet_FindReverseDomain(void* db, const char* objid, void* thisptr, void(*callback)(void*,const char*, const char*));
     void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*));
     void DMCA_TakedownBlob(void* db,const char* name);
+    void OpenNet_BeginTransaction(void* db);
+    void OpenNet_EndTransaction(void* db);
+
 #ifdef __cplusplus
 }
 #endif

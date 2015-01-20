@@ -547,4 +547,16 @@ extern "C" {
         KeyDatabase* keydb = (KeyDatabase*)db;
         keydb->RetrieveObject(name,thisptr,callback);
     }
+    void OpenNet_BeginTransaction(void* db) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	char* err;
+    	sqlite3_exec(keydb->db, "BEGIN TRANSACTION",0,0,&err);
+
+    }
+    void OpenNet_EndTransaction(void* db) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	char* err;
+    	sqlite3_exec(keydb->db, "COMMIT TRANSACTION",0,0,&err);
+
+    }
 }
