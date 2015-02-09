@@ -6,6 +6,7 @@
 #include <string>
 #include "LightThread.h"
 #include <uuid/uuid.h>
+#include "GGDNS.h"
 static size_t replicaCount = 0;
 static size_t timeoutValue = 5000;
 class BStream {
@@ -48,12 +49,12 @@ public:
 class Callback {
 public:
 	std::function<void(NamedObject*)> callback;
-	bool* cancellationToken;
+	std::shared_ptr<TimerEvent> cancellationToken;
 };
 class CertCallback {
 public:
 	std::function<void(bool)> callback;
-	bool* cancellationToken;
+	std::shared_ptr<TimerEvent> cancellationToken;
 };
 static std::mutex callbacks_mtx;
 //Resolver cache; used to map GUIDs to server identifiers
@@ -71,11 +72,13 @@ static void processDNS(const char* name) {
 	void(*callback)(void*,NamedObject*);
 	void* thisptr;
 	std::vector<unsigned char> data;
+	std::string authority;
 	auto bot = [&](NamedObject* obj){
 		printf("%p\n",obj);
 		if(obj) {
 			data.resize(obj->bloblen-4);
 			memcpy(data.data(),obj->blob+4,data.size());
+			authority = obj->authority;
 		}
 	};
 	thisptr = C(bot,callback);
@@ -94,21 +97,14 @@ static void processDNS(const char* name) {
 			}
 			//DNS parent
 			const char* parent = s.ReadString();
-			//List of authoratitative/replica servers
-			std::vector<std::string> serverlist;
-			while(true) {
-				std::string val = s.ReadString();
-				if(val.size() == 0) {
-					break;
-				}
-				serverlist.push_back(val);
-			}
-			std::vector<GlobalGrid_Identifier> dlist;
-			dlist.resize(serverlist.size());
-			for(size_t i = 0;i<dlist.size();i++) {
-				uuid_parse(serverlist[i].data(),(unsigned char*)dlist[i].value);
-			}
-			resolverCache[name] = dlist;
+			//DNS owner
+			const char* owner = s.ReadString();
+			//Signature (proof of ownership)
+			size_t siglen = s.length;
+			unsigned char* sig = s.Increment(s.length);
+			bool verified = OpenNet_VerifySignature(db,owner,data.data(),data.size()-siglen,sig,siglen);
+
+
 			//WE HAVE DNS!!!!
 			//TODO: Verify signature matches and add to database
 			//If we don't have signatures for parent zone; request them, then
@@ -118,17 +114,20 @@ static void processDNS(const char* name) {
 				OpenNet_AddDomain(db,dname,0,name);
 			}else {
 				//TODO: We are NOT root. Load parent node and check signature
-				NamedObject* parentVal = 0;
+				std::string parentAuthority;
 				auto m = [&](NamedObject* obj){
-					parentVal = 0;
+					parentAuthority = obj->authority;
 				};
 				void(*cb)(void*,NamedObject*);
 				void* thisptr = C(m,cb);
-				OpenNet_Retrieve(db,parent,thisptr,cb);
-				if(parentVal) {
-					//TODO: Check signature
+				GGDNS_RunQuery(parent,thisptr,cb);
+				if(parentAuthority.size()) {
+					if(parentAuthority == authority) {
+						//TODO: Verify rest of chain
+						printf("TODO: Verify chain\n");
+					}
 				}else {
-					//TODO: Request parent value
+					//Fail
 
 				}
 			}
@@ -528,14 +527,46 @@ void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)
 		}
 	});
 }
-void GGDNS_MakeDomain(const char* name, const char* parent, const char* authority) {
+
+
+void GGDNS_MakeHost(const char* ptr, unsigned char* guidlist, size_t len) {
+	NamedObject obj;
+	unsigned char* mander = new unsigned char[7+strlen(ptr)+1+len];
+	memcpy(mander,"DNS-ID",7);
+	memcpy(mander+7,ptr,strlen(ptr)+1);
+	memcpy(mander+7+strlen(ptr)+1,guidlist,len);
+	obj.blob = mander;
+	obj.bloblen = 7+strlen(ptr)+1+len;
+	std::string authority;
+	void* thisptr;
+	void(*cb)(void*,NamedObject*);
+	thisptr = C([&](NamedObject* objPtr){
+		authority = objPtr->authority;
+	},cb);
+	OpenNet_Retrieve(db,ptr,thisptr,cb);
+//TODO: Finish creation of object, and add to some metadata base
+	obj.authority = (char*)authority.data();
+	unsigned char id[16];
+	char txt[256];
+	uuid_generate(id);
+	uuid_unparse(id,txt);
+	GGDNS_MakeObject(txt,&obj,0,0);
+
+}
+
+//Makes a domain entry pointing to an authoritative entity.
+//This contains no additional information than the name and signature of
+//the entity owning it. It must be signed by an authoritative server (in parent) to be valid
+//Or; in the case of a root-level domain, must be self-signed using the signRecord command.
+void GGDNS_MakeDomain(const char* name, const char* parent, const char* authority,void* thisptr, void(*callback)(void* thisptr, unsigned char* data, size_t dlen)) {
 
 	unsigned char mid[16];
 	GlobalGrid_GetID(connectionmanager,mid);
 	char mid_s[256];
 	uuid_unparse(mid,mid_s);
-	size_t sz = strlen("DNS-ENC")+1+strlen(name)+1+strlen(parent)+1+strlen(mid_s)+1+1;
-	unsigned char* mander = new unsigned char[sz];
+	size_t auth_sz = strlen("DNS-ENC")+1+strlen(name)+1+strlen(parent)+strlen(authority)+1;
+
+	unsigned char* mander = new unsigned char[auth_sz];
 	unsigned char* izard = mander;
 	size_t s = strlen("DNS-ENC")+1;
 	//DNS-ENC
@@ -549,25 +580,26 @@ void GGDNS_MakeDomain(const char* name, const char* parent, const char* authorit
 	s = strlen(parent)+1;
 	memcpy(izard,parent,s);
 	izard+=s;
-	//GUID list
-	s = strlen(mid_s)+1;
-	memcpy(izard,mid_s,s);
+	//Authority
+	s = strlen(authority)+1;
+	memcpy(izard,authority,s);
 	izard+=s;
-	*izard = 0;
-	unsigned char guid[16];
-	uuid_generate(guid);
-	char output[256];
-	uuid_unparse(guid,output);
-	NamedObject obj;
-	obj.authority = (char*)authority;
-	obj.blob = mander;
-	obj.bloblen = sz;
-	auto bot = [=](bool success){};
-	void(*cb)(void*,bool);
-	void* tp = C(bot,cb);
-	GGDNS_MakeObject(output,&obj,tp,cb);
-	delete[] mander;
-	OpenNet_AddDomain(db,name,parent,output);
+	//TODO: Signature
+	unsigned char* sig;
+	size_t sig_len;
+	void(*cb)(void*,unsigned char*,size_t);
+	void* thisptr_a = C([&](unsigned char* data,size_t siglen){
+		sig = new unsigned char[siglen];
+		memcpy(sig,data,siglen);
+		sig_len = siglen;
+	},cb);
+	OpenNet_SignData(db,authority,mander,auth_sz,thisptr_a,cb);
+	unsigned char* rval = new unsigned char[sig_len+auth_sz];
+	memcpy(rval,mander,auth_sz);
+	memcpy(rval+auth_sz,sig,sig_len);
+	callback(thisptr,rval,sig_len+auth_sz);
+	delete[] rval;
+	delete[] sig;
 }
 void* GGDNS_db() {
 	return db;
@@ -595,7 +627,7 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     ival.signature = 0;
 
     OpenNet_MakeObject(db,name,&ival,val);
-
+    *object = ival;
     delete[] data;
     if(callback) {
     	//TODO: Not yet implemented.

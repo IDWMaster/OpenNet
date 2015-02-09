@@ -118,6 +118,8 @@ public:
     sqlite3_stmt* command_addDomain;
     sqlite3_stmt* command_addReplica;
     sqlite3_stmt* command_takedownBlob;
+    sqlite3_stmt* command_retrieveDomainPtr;
+    sqlite3_stmt* command_addDomainPtr;
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates)) != SQLITE_DONE) {
@@ -183,6 +185,7 @@ public:
 			}
 		}
         sqlite3_reset(command_findcert);
+        sqlite3_bind_text(command_findPrivateKey,1,thumbprint.data(),thumbprint.size(),0);
         if(retval) {
             //Locate private key
             while((val = sqlite3_step(command_findPrivateKey)) != SQLITE_DONE) {
@@ -226,6 +229,8 @@ public:
         //Parent = The GUID of the parent node.
         //ObjectID = The actual signed DNS object, validating the identity of the domain.
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS Domains (Name TEXT NOT NULL, Parent TEXT, ObjectID TEXT NOT NULL, PRIMARY KEY(Name, Parent)); CREATE INDEX IF NOT EXISTS ReverseLookup ON Domains(ObjectID)",0,0,&err);
+        sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS DomainPointers (DomainID TEXT NOT NULL PRIMARY KEY, ObjectID TEXT NOT NULL)",0,0,&err);
+
         //Replica server list (per-object)
         sqlite3_exec(db,"CREATE TABLE IF NOT EXISTS Replicas (ObjectName TEXT, ServerID TEXT, PRIMARY KEY(ObjectName, ServerID))",0,0,&err);
         std::string sql = "INSERT OR IGNORE INTO Certificates VALUES (?, ?, ?, ?)";
@@ -245,7 +250,7 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_getPrivateKeys,&parsed);
         sql = "SELECT * FROM Certificates";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_enumerateCertificates,&parsed);
-        sql = "UPDATE NamedObjects SET Authority = ?, Signature = ?, SignedData = ? WHERE Name = ?";
+        sql = "UPDATE NamedObjects SET Authority = ?, Signature = ?, SignedData = ? WHERE Name = ?;DELETE FROM Replicas WHERE ObjectName = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_updateObject,&parsed);
         sql = "SELECT ObjectID FROM Domains WHERE Name = ? AND Parent = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findDomain,&parsed);
@@ -257,6 +262,10 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addReplica,&parsed);
         sql = "DELETE FROM NamedObjects WHERE Name = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_takedownBlob,&parsed);
+        sql = "SELECT * FROM DomainPointers WHERE DomainID = ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_retrieveDomainPtr,&parsed);
+        sql = "INSERT INTO DomainPointers VALUES (?, ?)";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomainPtr,&parsed);
 
         int status = 0;
         bool hasKey = false;
@@ -308,6 +317,7 @@ public:
         		sqlite3_bind_blob(command_updateObject,2,obj.signature,obj.siglen,0);
         		sqlite3_bind_blob(command_updateObject,3,obj.blob,obj.bloblen,0);
         		sqlite3_bind_text(command_updateObject,4,name,slen,0);
+        		sqlite3_bind_text(command_updateObject,5,obj.authority,strlen(obj.authority),0);
         		while(sqlite3_step(command_updateObject) != SQLITE_DONE) {}
         		sqlite3_reset(command_updateObject);
         	}else {
@@ -356,6 +366,8 @@ public:
         sqlite3_finalize(command_addDomain);
         sqlite3_finalize(command_addReplica);
         sqlite3_finalize(command_takedownBlob);
+        sqlite3_finalize(command_retrieveDomainPtr);
+        sqlite3_finalize(command_addDomainPtr);
 		sqlite3_close(db);
 	}
 };
@@ -379,6 +391,32 @@ extern "C" {
             }
         }
         sqlite3_reset(realdb->command_getPrivateKeys);
+
+    }
+    void OpenNet_AddDomainPtr(void* db, const char* objid, const char* ptrObject) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	sqlite3_stmt* query = keydb->command_addDomainPtr;
+    	sqlite3_bind_text(query,1,objid,strlen(objid),0);
+    	sqlite3_bind_text(query,2,ptrObject,strlen(ptrObject),0);
+    	int val;
+    	while((val = sqlite3_step(query)) != SQLITE_DONE) {};
+
+    }
+    void OpenNet_RetrieveDomainPtr(void* db, const char* objid, void* thisptr, void(*callback)(void*,NamedObject*)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	sqlite3_stmt* query = keydb->command_retrieveDomainPtr;
+    	int val;
+    	std::string name;
+    	sqlite3_bind_text(query,1,objid,strlen(objid),0);
+    	while((val = sqlite3_step(query)) != SQLITE_DONE) {
+    		if(val == SQLITE_ROW) {
+    			name = (const char*)sqlite3_column_text(query,1);
+    		}
+    	}
+    	sqlite3_reset(query);
+    	if(name.size()) {
+    		OpenNet_Retrieve(db,objid,thisptr,callback);
+    	}
 
     }
     void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*)) {
@@ -510,6 +548,32 @@ extern "C" {
     		delete cert;
     	}else {
     		callback(thisptr,0);
+    	}
+    }
+    bool OpenNet_VerifySignature(void* db, const char* authority, unsigned char* data, size_t sz, unsigned char* signature, size_t siglen) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	Certificate* cert = keydb->FindCertificate(authority);
+    	if(cert) {
+    		bool retval = VerifySignature(data,sz,signature,siglen,cert->PublicKey.data());
+    		delete cert;
+    		return retval;
+    	}
+    	return false;
+    }
+    void OpenNet_SignData(void* db, const char* authority, unsigned char* data, size_t sz, void* thisptr, void(*callback)(void*,unsigned char*,size_t)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	Certificate* cert = keydb->FindCertificate(authority);
+    	if(cert) {
+    		std::vector<unsigned char> pkey = cert->PrivateKey;
+    		if(pkey.size() == 0) {
+    			throw "sideways";
+    		}
+    		size_t slen = CreateSignature(data,sz,pkey.data(),0);
+    		unsigned char* sig = new unsigned char[slen];
+    		callback(thisptr,sig,slen);
+    		callback(thisptr,sig,CreateSignature(data,sz,cert->PrivateKey.data(),sig));
+    		delete[] sig;
+    		delete cert;
     	}
     }
     void OpenNet_AddCertificate(void* db,const OCertificate* abi, void* thisptr, void(*callback)(void*,const char*)) {

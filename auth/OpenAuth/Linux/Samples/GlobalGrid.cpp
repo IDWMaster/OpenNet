@@ -33,134 +33,70 @@
 
 int main(int argc, char** argv) {
 
-GlobalGrid::P2PConnectionManager mngr;
-GlobalGrid::InternetProtocol ip(5809,&mngr);
-mngr.RegisterProtocol(&ip);
-GGDNS_Init(mngr.nativePtr);
-
-if(mngr.nativePtr == 0) {
-    printf("NOTE: Simulated GlobalGrid environment detected -- database changes will only be visible on local network. For access to global database, please purchase a GlobalGrid license.\n");
-}
+std::shared_ptr<GlobalGrid::P2PConnectionManager> mngr = std::make_shared<GlobalGrid::P2PConnectionManager>();
+GlobalGrid::InternetProtocol ip(5809,mngr);
+mngr->RegisterProtocol(&ip);
+GGDNS_Init(mngr->nativePtr);
 
 
+if(argc == 1) {
+	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\n");
 
+}else {
+	if(argv[1] == std::string("enumPrivateKeys")) {
+		bool(*enumCallback)(void*, const char*);
+		void* thisptr = C([&](const char* name){
+		    printf("%s\n");
+		    return true;
+		},enumCallback);
+		GGDNS_EnumPrivateKeys(thisptr,enumCallback);
+	}else {
+		//We like making the Internetz
+		//We also REALLY liek Mudkipz
+		if(argv[1] == std::string("makeInternet")) {
+			if(argc == 3) {
+				unsigned char id[16];
+				uuid_generate(id);
+				char out[256];
+				uuid_unparse(id,out);
+				void(*cb)(void*,unsigned char*,size_t);
+				void* thisptr = C([&](unsigned char* signedObject, size_t sz){
+					write(STDOUT_FILENO,signedObject,sz);
 
-//Script it. Automated tests for GlobalGrid GGDNS integration
-printf("Scanning for private key....\n");
-std::string thumbprint;
-bool(*enumCallback)(void*, const char*);
-void* thisptr = C([&](const char* name){
-    thumbprint = name;
-    return false;
-},enumCallback);
-GGDNS_EnumPrivateKeys(thisptr,enumCallback);
-printf("Ready for commands");
-char buffer[1024*4];
-auto readline = [&](){
-	//read(STDIN_FILENO,buffer,256);
-	std::cin.getline(buffer,1024*4);
-	return std::string(buffer);
-};
-std::function<void()> menu = [&]() {
-	printf("\n\n0. Run GGDNS query\n1. Add GGDNS object\n2. Add GGDNS domain\n3. Query for DNS locator\n4. List authoritative servers for domain\n5. Mount filesystem\nPlease enter a selection: ");
-	std::string input = readline();
-	switch(input[0]) {
-	case '0':
-	{
-
-		printf("Enter object ID: \n");
-		std::mutex m;
-		std::condition_variable evt;
-		std::unique_lock<std::mutex> l(m);
-        void(*callback)(void*,NamedObject*);
-		bool c = false;
-		void* thisptr = C([&](NamedObject* obj){
-			if(obj) {
-				printf("%s\n",(char*)obj->blob);
+				},cb);
+				GGDNS_MakeDomain(out,"",argv[2],thisptr,cb);
+				//printf("%s\n",out);
 			}else {
-				printf("Object not found (NOTE: GGDNS entries are case-sensitive)\n");
+				printf("Invalid number of arguments. Expected 2 (makeInternet and private key)\n");
 			}
-			c = true;
-		},callback);
-		std::string id = readline();
-		GGDNS_RunQuery(id.data(),thisptr,callback);
-		while(!c) {
-			sleep(1);
+		}else {
+			if(argv[1] == std::string("signRecord")) {
+				unsigned char request[4096];
+				int bytes = read(STDIN_FILENO,request,4096);
+				NamedObject obj;
+				obj.blob = request;
+				obj.bloblen = bytes;
+				obj.authority = argv[2];
+				void* thisptr;
+				void(*cb)(void*,bool);
+				unsigned char name[16];
+				uuid_generate(name);
+				char nstr[256];
+				memset(nstr,0,256);
+				uuid_unparse(name,nstr);
+
+				thisptr = C([&](bool success){
+					if(success) {
+					}else {
+					}
+				},cb);
+				GGDNS_MakeObject(nstr,&obj,thisptr,cb);
+
+				write(STDOUT_FILENO,nstr,strlen(nstr)+1);
+				write(STDOUT_FILENO,obj.signature,obj.siglen);
+
+			}
 		}
-		printf("Operation complete\n");
-		menu();
 	}
-		break;
-	case '1':
-	{
-		printf("Enter GGDNS identifier\n");
-		std::string id = readline();
-		printf("Enter GGDNS value (up to 4KB)\n ");
-		std::string val = readline();
-		NamedObject obj;
-		obj.authority = (char*)thumbprint.data();
-		obj.blob = (unsigned char*)val.data();
-		obj.bloblen = val.size();
-		GGDNS_MakeObject(id.data(),&obj,0,0);
-		printf("Object created successfully.\n");
-		menu();
-	}
-		break;
-	case '2':
-	{
-		printf("Enter parent authoritative domain: ");
-		std::string parent = readline();
-		printf("Enter name of domain: ");
-		std::string dname = readline();
-		GGDNS_MakeDomain(dname.data(),parent.data(),thumbprint.data());
-		printf("Domain created successfully\n");
-	}
-		break;
-	case '3':
-	{
-		printf("Enter parent authoritative domain:");
-		std::string parent = readline();
-		printf("Enter name of domain: ");
-		std::string dname = readline();
-		void(*cb)(void*,const char*);
-		thisptr = C([=](const char* val){
-			printf("%s\n",val);
-		},cb);
-		GGDNS_QueryDomain(dname.data(),parent.data(),thisptr,cb);
-	}
-		break;
-	case '4':
-	{
-		printf("Enter object ID: ");
-		std::string id = readline();
-		auto bot = [=](GlobalGrid_Identifier* list, size_t count){
-			if(list) {
-
-
-			for(size_t i = 0;i<count;i++) {
-				char mander[256];
-				uuid_unparse((unsigned char*)list[i].value,mander);
-				printf("%s\n",mander);
-			}
-			}else {
-				printf("Error: Pikachu!\n");
-			}
-		};
-		void(*cb)(void*,GlobalGrid_Identifier*,size_t);
-		thisptr = C(bot,cb);
-		GGDNS_GetGuidListForObject(id.data(),thisptr,cb);
-
-	}
-		break;
-	case '5':
-	{
-		//Mount filesystem
-		printf("This feature has been discontinued -- it's not very practical (WAAAAAYY TOO SLOW)\n");
-		abort();
-	}
-		break;
-	}
-};
-menu();
-sleep(-1);
+}
 }

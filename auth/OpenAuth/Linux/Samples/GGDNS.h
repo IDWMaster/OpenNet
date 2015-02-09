@@ -20,7 +20,11 @@ void GGDNS_SetReplicaCount(size_t count);
 void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*callback)(void*,const char*));
 void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t));
 void GGDNS_SetTimeoutInterval(size_t ms);
-void GGDNS_MakeDomain(const char* name, const char* parent, const char* authority);
+void GGDNS_MakeDomain(const char* name, const char* parent,  const char* authority,void* thisptr, void(*callback)(void* thisptr, unsigned char* data, size_t dlen));
+//Modifies the host list for a domain name under your control (where ptr is the pointer to your domain)
+//Length is the length (in bytes) of the guidlist. A guidlist should
+//be composed of individual 16-byte entries.
+void GGDNS_MakeHost(const char* ptr, unsigned char* guidlist, size_t len);
 void* GGDNS_db();
 #ifdef __cplusplus
 }
