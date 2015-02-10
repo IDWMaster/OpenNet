@@ -55,6 +55,7 @@ extern "C" {
     void DMCA_TakedownBlob(void* db,const char* name);
     void OpenNet_BeginTransaction(void* db);
     void OpenNet_EndTransaction(void* db);
+    bool OpenNet_VerifySignature(void* db, const char* authority, unsigned char* data, size_t sz, unsigned char* signature, size_t siglen);
     void OpenNet_SignData(void* db, const char* authority, unsigned char* data, size_t sz, void* thisptr, void(*callback)(void*,unsigned char*,size_t));
     void OpenNet_AddDomainPtr(void* db, const char* objid, const char* ptrObject);
     void OpenNet_RetrieveDomainPtr(void* db, const char* objid, void* thisptr, void(*callback)(void*,NamedObject*));

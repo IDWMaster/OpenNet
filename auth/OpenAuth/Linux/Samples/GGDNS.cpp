@@ -103,7 +103,9 @@ static void processDNS(const char* name) {
 			size_t siglen = s.length;
 			unsigned char* sig = s.Increment(s.length);
 			bool verified = OpenNet_VerifySignature(db,owner,data.data(),data.size()-siglen,sig,siglen);
-
+			if(!verified) {
+				return;
+			}
 
 			//WE HAVE DNS!!!!
 			//TODO: Verify signature matches and add to database
