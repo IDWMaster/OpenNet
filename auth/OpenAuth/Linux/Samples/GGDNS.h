@@ -18,7 +18,7 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
 //and may also be cached on other database servers if those objects are requested.
 void GGDNS_SetReplicaCount(size_t count);
 void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*callback)(void*,const char*));
-void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t));
+void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,unsigned char*,size_t));
 void GGDNS_SetTimeoutInterval(size_t ms);
 void GGDNS_MakeDomain(const char* name, const char* parent,  const char* authority,void* thisptr, void(*callback)(void* thisptr, unsigned char* data, size_t dlen));
 //Modifies the host list for a domain name under your control (where ptr is the pointer to your domain)

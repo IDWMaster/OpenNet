@@ -133,6 +133,38 @@ static void processDNS(const char* name) {
 
 				}
 			}
+		}else {
+			if(std::string("DNS-ID") == s.ReadString()) {
+				//DNS-encoded ID (host information)
+				char* id = s.ReadString();
+				void* thisptr;
+				void(*cb)(void*,const char*,const char*);
+				bool hasValidDomain = false;
+				thisptr = C([&](const char* name, const char* parent){
+					hasValidDomain = true;
+				},cb);
+
+				OpenNet_FindReverseDomain(db,id,thisptr,cb);
+				if(hasValidDomain) {
+					//Check if signature matches authority
+					void* tptr;
+					void(*r_cb)(void*,NamedObject*);
+					bool sigMatches = false;
+					tptr = C([&](NamedObject* obj){
+						BStream dreader(obj->blob,obj->bloblen);
+						dreader.ReadString();
+						dreader.ReadString();
+						dreader.ReadString();
+						if(authority == dreader.ReadString()) {
+							sigMatches = true;
+						}
+					},r_cb);
+					GGDNS_RunQuery(name,tptr,r_cb);
+					if(sigMatches) {
+						OpenNet_AddDomainPtr(db,id,name);
+					}
+				}
+			}
 		}
 	}
 	}catch(const char* er) {
@@ -510,24 +542,21 @@ void GGDNS_QueryDomain(const char* name, const char* parent, void* tptr, void(*c
 void GGDNS_SetTimeoutInterval(size_t ms) {
 	timeoutValue = ms;
 }
-void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,GlobalGrid_Identifier*,size_t)) {
+void GGDNS_GetGuidListForObject(const char* objid,void* thisptr, void(*callback)(void*,unsigned char*,size_t)) {
 	std::string name = objid;
-	RunQuery(objid,[=](NamedObject* obj){
-		if(obj) {
-			SubmitWork([=](){
-
-				//WE HAVE THE OBJECT!
-				processDNS(objid);
-				callbacks_mtx.lock();
-				std::vector<GlobalGrid_Identifier> ids = resolverCache[objid];
-				callbacks_mtx.unlock();
-				callback(thisptr,ids.data(),ids.size());
-			});
-
-		}else {
-			callback(thisptr,0,0);
+	//Query for the GUID list, and then use that object to enumerate
+	void* ta;
+	void(*ca)(void*,NamedObject*);
+	ta = C([&](NamedObject* obj){
+		if(obj){
+			BStream reader(obj->blob,obj->bloblen);
+			reader.ReadString();
+			reader.ReadString();
+			callback(thisptr,reader.ptr,reader.length);
 		}
-	});
+	},ca);
+	OpenNet_RetrieveDomainPtr(db,objid,ta,ca);
+
 }
 
 

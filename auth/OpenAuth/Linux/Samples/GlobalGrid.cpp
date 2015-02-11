@@ -40,7 +40,7 @@ GGDNS_Init(mngr->nativePtr);
 
 
 if(argc == 1) {
-	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\n");
+	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\n");
 
 }else {
 	if(argv[1] == std::string("enumPrivateKeys")) {
@@ -95,6 +95,30 @@ if(argc == 1) {
 				write(STDOUT_FILENO,nstr,strlen(nstr)+1);
 				write(STDOUT_FILENO,obj.signature,obj.siglen);
 
+			}else {
+				if(argv[1] == std::string("enumHosts")) {
+					if(argc != 3) {
+						printf("Invalid number of arguments (expected 2)");
+					}else {
+						void* thisptr;
+						void(*cb)(void*,unsigned char*,size_t);
+						thisptr = C([&](unsigned char* data, size_t len){
+							if(len % 16 == 0) {
+								for(size_t i = 0;i<len;i+=16) {
+									char mander[256]; //Convert a binary representation of the GUID to a Charmander.
+									memset(mander,0,256);
+									uuid_unparse(data,mander);
+									printf("%s\n",mander);
+								}
+							}
+						},cb);
+						GGDNS_GetGuidListForObject(argv[2],thisptr,cb);
+					}
+				}else {
+					if(argv[1] == std::string("getDomainPtr")) {
+						//TODO: Implement this
+					}
+				}
 			}
 		}
 	}
