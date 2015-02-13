@@ -29,4 +29,47 @@ void* GGDNS_db();
 #ifdef __cplusplus
 }
 #endif
+
+
+#ifdef __cplusplus
+//TODO: C++ helpers
+template<typename T>
+std::string DotQuery(const char* query) {
+	auto expect = [](const char*& str, const char& value, bool& found){
+		size_t offset = 0;
+		found = false;
+		while(*(str+offset) != 0) {
+			if(*(str+offset) == value) {
+				//TODO: Take substring
+				str = str+offset+1;
+				found = true;
+				return std::string(str,offset);
+			}
+			offset++;
+		}
+		return std::string(str);
+	};
+	std::vector<std::string> components;
+	bool found = true;
+	while(true) {
+		components.push_back(expect(query,'.',found));
+		if(!found) {
+			break;
+		}
+	}
+	std::string parent;
+	for(size_t i = components.size()-1;i>=0;i--) {
+		Event m;
+		void(*cb)(void*,const char*);
+		void* thisptr = C([&](const char* name){
+			parent = name;
+			m.signal();
+		},cb);
+		GGDNS_QueryDomain(components[i].data(),parent.data(),thisptr,cb);
+		m.wait();
+	}
+	return parent;
+}
+#endif
+
 #endif // GGDNS_H
