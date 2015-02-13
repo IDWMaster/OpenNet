@@ -33,8 +33,7 @@ void* GGDNS_db();
 
 #ifdef __cplusplus
 //TODO: C++ helpers
-template<typename T>
-std::string DotQuery(const char* query) {
+static std::string DotQuery(const char* query) {
 	auto expect = [](const char*& str, const char& value, bool& found){
 		size_t offset = 0;
 		found = false;

@@ -104,6 +104,7 @@ static void processDNS(const char* name) {
 			unsigned char* sig = s.Increment(s.length);
 			bool verified = OpenNet_VerifySignature(db,owner,data.data(),data.size()-siglen,sig,siglen);
 			if(!verified) {
+				printf("VERIFY FAIL, claim = %s\n",owner);
 				return;
 			}
 
@@ -113,9 +114,11 @@ static void processDNS(const char* name) {
 			//resend this request recursively.
 			if(strlen(parent) == 0) {
 				//We are root; add directly to database.
+				printf("DNS reg\n");
 				OpenNet_AddDomain(db,dname,0,name);
 			}else {
 				//TODO: We are NOT root. Load parent node and check signature
+				printf("TODO: Root check\n");
 				std::string parentAuthority;
 				auto m = [&](NamedObject* obj){
 					parentAuthority = obj->authority;
@@ -248,7 +251,7 @@ static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, u
         	if(replace) {
         		success = OpenNet_UpdateObject(db,name,&obj);
         	}else {
-        	success = OpenNet_AddObject(db,name,&obj);
+        		success = OpenNet_AddObject(db,name,&obj);
         	}
         	if(success) {
         		processDNS(name);
@@ -595,7 +598,7 @@ void GGDNS_MakeDomain(const char* name, const char* parent, const char* authorit
 	GlobalGrid_GetID(connectionmanager,mid);
 	char mid_s[256];
 	uuid_unparse(mid,mid_s);
-	size_t auth_sz = strlen("DNS-ENC")+1+strlen(name)+1+strlen(parent)+strlen(authority)+1;
+	size_t auth_sz = strlen("DNS-ENC")+1+strlen(name)+1+strlen(parent)+1+strlen(authority)+1;
 
 	unsigned char* mander = new unsigned char[auth_sz];
 	unsigned char* izard = mander;
@@ -658,6 +661,7 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     ival.signature = 0;
 
     OpenNet_MakeObject(db,name,&ival,val);
+    processDNS(name);
     *object = ival;
     delete[] data;
     if(callback) {

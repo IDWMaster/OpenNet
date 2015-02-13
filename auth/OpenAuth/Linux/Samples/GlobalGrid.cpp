@@ -116,7 +116,8 @@ if(argc == 1) {
 					}
 				}else {
 					if(argv[1] == std::string("getDomainPtr")) {
-						//TODO: Implement this
+						std::string val = DotQuery(argv[2]);
+						printf("%s\n",val.data());
 					}
 				}
 			}
