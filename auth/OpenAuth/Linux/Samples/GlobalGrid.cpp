@@ -46,7 +46,7 @@ if(argc == 1) {
 	if(argv[1] == std::string("enumPrivateKeys")) {
 		bool(*enumCallback)(void*, const char*);
 		void* thisptr = C([&](const char* name){
-		    printf("%s\n");
+		    printf("%s\n",name);
 		    return true;
 		},enumCallback);
 		GGDNS_EnumPrivateKeys(thisptr,enumCallback);

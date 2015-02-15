@@ -74,7 +74,6 @@ static void processDNS(const char* name) {
 	std::vector<unsigned char> data;
 	std::string authority;
 	auto bot = [&](NamedObject* obj){
-		printf("%p\n",obj);
 		if(obj) {
 			data.resize(obj->bloblen-4);
 			memcpy(data.data(),obj->blob+4,data.size());
@@ -83,9 +82,7 @@ static void processDNS(const char* name) {
 	};
 	thisptr = C(bot,callback);
 	OpenNet_Retrieve(db,name,thisptr,callback);
-	if(data.size() == 0) {
-		printf("Couldn't find %s\n",name);
-	}
+
 	if(data.size()) {
 		BStream s(data.data(),data.size());
 		//Read DNS-ENC marker
@@ -104,7 +101,6 @@ static void processDNS(const char* name) {
 			unsigned char* sig = s.Increment(s.length);
 			bool verified = OpenNet_VerifySignature(db,owner,data.data(),data.size()-siglen,sig,siglen);
 			if(!verified) {
-				printf("VERIFY FAIL, claim = %s\n",owner);
 				return;
 			}
 
@@ -114,11 +110,9 @@ static void processDNS(const char* name) {
 			//resend this request recursively.
 			if(strlen(parent) == 0) {
 				//We are root; add directly to database.
-				printf("DNS reg\n");
 				OpenNet_AddDomain(db,dname,0,name);
 			}else {
 				//TODO: We are NOT root. Load parent node and check signature
-				printf("TODO: Root check\n");
 				std::string parentAuthority;
 				auto m = [&](NamedObject* obj){
 					parentAuthority = obj->authority;

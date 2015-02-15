@@ -35,6 +35,9 @@ void* GGDNS_db();
 //TODO: C++ helpers
 static std::string DotQuery(const char* query) {
 	auto expect = [](const char*& str, const char& value, bool& found){
+		if(str == 0) {
+			return std::string("");
+		}
 		size_t offset = 0;
 		found = false;
 		while(*(str+offset) != 0) {
@@ -57,11 +60,13 @@ static std::string DotQuery(const char* query) {
 		}
 	}
 	std::string parent;
-	for(size_t i = components.size()-1;i>=0;i--) {
+	for(ssize_t i = components.size()-1;i>=0;i--) {
 		Event m;
 		void(*cb)(void*,const char*);
 		void* thisptr = C([&](const char* name){
-			parent = name;
+			if(name != 0) {
+				parent = name;
+			}
 			m.signal();
 		},cb);
 		GGDNS_QueryDomain(components[i].data(),parent.data(),thisptr,cb);

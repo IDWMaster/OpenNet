@@ -114,6 +114,7 @@ public:
     sqlite3_stmt* command_enumerateCertificates;
     sqlite3_stmt* command_updateObject;
     sqlite3_stmt* command_findDomain;
+    sqlite3_stmt* command_findRootDomain;
     sqlite3_stmt* command_findReverseDomain;
     sqlite3_stmt* command_addDomain;
     sqlite3_stmt* command_addReplica;
@@ -254,6 +255,8 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_updateObject,&parsed);
         sql = "SELECT ObjectID FROM Domains WHERE Name = ? AND Parent = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findDomain,&parsed);
+        sql = "SELECT ObjectID FROM Domains WHERE Name = ? AND Parent IS NULL";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findRootDomain,&parsed);
         sql = "SELECT Name, Parent FROM Domains WHERE ObjectID = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
         sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
@@ -368,6 +371,7 @@ public:
         sqlite3_finalize(command_takedownBlob);
         sqlite3_finalize(command_retrieveDomainPtr);
         sqlite3_finalize(command_addDomainPtr);
+        sqlite3_finalize(command_findRootDomain);
 		sqlite3_close(db);
 	}
 };
@@ -421,19 +425,25 @@ extern "C" {
     }
     void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
-    	sqlite3_bind_text(keydb->command_findDomain,1,domain,strlen(domain),0);
-    	if(parent) {
-    		sqlite3_bind_text(keydb->command_findDomain,2,parent,strlen(parent),0);
-    	}else {
-    		sqlite3_bind_null(keydb->command_findDomain,2);
-    	}
+    	//TODO: Fails on NULL values because engine can't do = NULL, you need to use IS NULL
+    	//conditionally. Unfortunately; we may need two separate queries for this....
+    	printf("Finding domain %s with parent %s using command %p\n",domain,parent,keydb->command_findDomain);
+    	sqlite3_stmt* query = keydb->command_findDomain;
+    	if(strlen(parent)) {
+    	  	sqlite3_bind_text(query,2,parent,strlen(parent),0);
+      	}else {
+      		query = keydb->command_findRootDomain;
+      	}
+    	sqlite3_bind_text(query,1,domain,strlen(domain),0);
+
     	int val;
-    	while((val = sqlite3_step(keydb->command_findDomain)) != SQLITE_DONE) {
+    	while((val = sqlite3_step(query)) != SQLITE_DONE) {
     		if(val == SQLITE_ROW) {
-    			callback(thisptr,(char*)sqlite3_column_text(keydb->command_findDomain,0));
+    			printf("Found domain\n");
+    			callback(thisptr,(char*)sqlite3_column_text(query,0));
     		}
     	}
-    	sqlite3_reset(keydb->command_findDomain);
+    	sqlite3_reset(query);
 
     }
     void OpenNet_FindReverseDomain(void* db, const char* objid, void* thisptr, void(*callback)(void*,const char*, const char*)) {
@@ -448,6 +458,7 @@ extern "C" {
     	}
     	sqlite3_reset(bot);
     }
+
     void OpenNet_AddDomain(void* db, const char* name, const char* parent, const char* objid) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
     	auto bot = keydb->command_addDomain;
