@@ -118,6 +118,22 @@ if(argc == 1) {
 					if(argv[1] == std::string("getDomainPtr")) {
 						std::string val = DotQuery(argv[2]);
 						printf("%s\n",val.data());
+					}else {
+						if(argv[1] == std::string("requestDomain")) {
+							const char* fullDomain = argv[2];
+							const char* parentDot = argv[2];
+							while(*parentDot != '.' && *parentDot != 0){parentDot++;};
+
+								std::string parentObject = DotQuery(parentDot+1);
+								std::string mf = std::string(fullDomain,parentDot);
+								void* thisptr;
+								void(*cb)(void*,unsigned char*,size_t);
+								thisptr = C([&](unsigned char* data,size_t len){
+									write(STDOUT_FILENO,data,len);
+								},cb);
+								GGDNS_MakeDomain(mf.data(),parentDot+1,argv[3],thisptr,cb);
+
+						}
 					}
 				}
 			}
