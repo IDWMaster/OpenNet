@@ -113,6 +113,7 @@ static void processDNS(const char* name) {
 				OpenNet_AddDomain(db,dname,0,name);
 			}else {
 				//TODO: We are NOT root. Load parent node and check signature
+
 				std::string parentAuthority;
 				auto m = [&](NamedObject* obj){
 					parentAuthority = obj->authority;
