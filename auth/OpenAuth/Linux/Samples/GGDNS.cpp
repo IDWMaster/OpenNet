@@ -7,6 +7,7 @@
 #include "LightThread.h"
 #include <uuid/uuid.h>
 #include "GGDNS.h"
+#include <memory>
 static size_t replicaCount = 0;
 static size_t timeoutValue = 5000;
 class BStream {
@@ -46,21 +47,21 @@ public:
         return retval;
     }
 };
-class Callback {
+class WaitHandle {
 public:
-	std::function<void(NamedObject*)> callback;
-	std::shared_ptr<TimerEvent> cancellationToken;
-};
-class CertCallback {
-public:
-	std::function<void(bool)> callback;
-	std::shared_ptr<TimerEvent> cancellationToken;
+	//The event
+	Event evt;
+	//Whether or not it was successful
+	bool success;
+	WaitHandle() {
+		success = false;
+	}
 };
 static std::mutex callbacks_mtx;
 //Resolver cache; used to map GUIDs to server identifiers
 static std::map<std::string,std::vector<GlobalGrid_Identifier>> resolverCache;
-static std::map<std::string,Callback> callbacks;
-static std::map<std::string,CertCallback> certCallbacks;
+static std::map<std::string,std::shared_ptr<WaitHandle>> objectRequests;
+static std::map<std::string,std::shared_ptr<WaitHandle>> certRequests;
 static void* connectionmanager;
 static void* db;
 static void SendQuery_Raw(const char* name);
@@ -169,255 +170,274 @@ static void processDNS(const char* name) {
 
 	}
 }
-static void processRequest(void* thisptr, unsigned char* src, int32_t srcPort, unsigned char* data, size_t sz) {
+
+class CallOnReturn {
+public:
+	std::function<void()> function;
+	CallOnReturn(const std::function<void()>& functor):function(functor) {
+	}
+	~CallOnReturn() {
+		function();
+	}
+};
+static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort, unsigned char* data_, size_t sz) {
     //Received a DNS request; process it
-    BStream s(data,sz);
-    try {
-        unsigned char opcode;
-        s.Read(opcode);
-        switch(opcode) {
-        case 0:
-        {
-            char* name = s.ReadString();
-            printf("Request for %s\n",name);
-            //GGDNS request entry
-            void(*callback)(void*,NamedObject*);
-            void* thisptr = C([&](NamedObject* obj){
-                    //Found it!
-                    size_t sz = 1+strlen(obj->authority)+1+strlen(name)+1+4+obj->bloblen+4+obj->siglen;
-                    unsigned char* response = (unsigned char*)malloc(sz);
-                    unsigned char* ptr = response;
-                    *ptr = 1;
-                    ptr++;
-                    memcpy(ptr,obj->authority,strlen(obj->authority)+1);
-                    ptr+=strlen(obj->authority)+1;
-                    memcpy(ptr,name,strlen(name)+1);
-                    ptr+=strlen(name)+1;
-                    memcpy(ptr,&obj->bloblen,4);
-                    ptr+=4;
-                    memcpy(ptr,obj->blob,obj->bloblen);
-                    ptr+=obj->bloblen;
-                    memcpy(ptr,&obj->siglen,4);
-                    ptr+=4;
-                    memcpy(ptr,obj->signature,obj->siglen);
+	unsigned char* data = new unsigned char[sz];
+	unsigned char src[16];
+	memcpy(data,data_,sz);
+	memcpy(src,src_,16);
+	SubmitWork([=](){
+		//TODO: Ensure that data gets freed in all cases
+		void* thisptr;
+		CallOnReturn freer([&](){
+			delete[] data;
+		});
+		 BStream s(data,sz);
+		    try {
+		        unsigned char opcode;
+		        s.Read(opcode);
+		        switch(opcode) {
+		        case 0:
+		        {
+		            char* name = s.ReadString();
+		            printf("Request for %s\n",name);
+		            //GGDNS request entry
+		            void(*callback)(void*,NamedObject*);
+		            void* thisptr = C([&](NamedObject* obj){
+		                    //Found it!
+		                    size_t sz = 1+strlen(obj->authority)+1+strlen(name)+1+4+obj->bloblen+4+obj->siglen;
+		                    unsigned char* response = (unsigned char*)malloc(sz);
+		                    unsigned char* ptr = response;
+		                    *ptr = 1;
+		                    ptr++;
+		                    memcpy(ptr,obj->authority,strlen(obj->authority)+1);
+		                    ptr+=strlen(obj->authority)+1;
+		                    memcpy(ptr,name,strlen(name)+1);
+		                    ptr+=strlen(name)+1;
+		                    memcpy(ptr,&obj->bloblen,4);
+		                    ptr+=4;
+		                    memcpy(ptr,obj->blob,obj->bloblen);
+		                    ptr+=obj->bloblen;
+		                    memcpy(ptr,&obj->siglen,4);
+		                    ptr+=4;
+		                    memcpy(ptr,obj->signature,obj->siglen);
 
-                    GlobalGrid_Send(connectionmanager,src,srcPort,1,response,sz);
-                    free(response);
-            },callback);
-            OpenNet_Retrieve(db,name,thisptr,callback);
-        }
-            break;
-        case 1:
-        {
-        	NamedObject obj;
-        	obj.authority = s.ReadString();
-        	const char* name = s.ReadString();
-        	printf("Received ACK for %s from %s\n",name,obj.authority);
-        	uint32_t val;
-        	s.Read(val);
-        	obj.bloblen = val;
-        	obj.blob = s.Increment(val);
-        	s.Read(val);
-        	obj.siglen = val;
-        	obj.signature = s.Increment(val);
-        	bool replace = false;
-        	uint32_t objVersion;
-        	uint32_t oldVersion;
-        	memcpy(&oldVersion,obj.blob,4);
-        	void(*c)(void*, NamedObject*);
-        	std::string oldauth;
+		                    GlobalGrid_Send(connectionmanager,(unsigned char*)src,srcPort,1,response,sz);
+		                    free(response);
+		            },callback);
+		            OpenNet_Retrieve(db,name,thisptr,callback);
+		        }
+		            break;
+		        case 1:
+		        {
+		        	NamedObject obj;
+		        	obj.authority = s.ReadString();
+		        	const char* name = s.ReadString();
+		        	printf("Received ACK for %s from %s\n",name,obj.authority);
+		        	uint32_t val;
+		        	s.Read(val);
+		        	obj.bloblen = val;
+		        	obj.blob = s.Increment(val);
+		        	s.Read(val);
+		        	obj.siglen = val;
+		        	obj.signature = s.Increment(val);
+		        	bool replace = false;
+		        	uint32_t objVersion;
+		        	uint32_t oldVersion;
+		        	memcpy(&oldVersion,obj.blob,4);
+		        	void(*c)(void*, NamedObject*);
+		        	std::string oldauth;
 
-        	auto cvi = [&](NamedObject* obj){
-        		if(obj) {
-        			replace = true;
-        			memcpy(&objVersion,obj->blob,4);
-        			oldauth = obj->authority;
-        		}
-        	};
-        	if(objVersion <=oldVersion) {
-        		return;
-        	}
-        	void* tp = C(cvi,c);
-        	OpenNet_Retrieve(db,name,tp,c);
-        	if(obj.bloblen<4 || (oldauth != obj.authority && replace)) {
-        	        		return;
-        	        	}
-        	bool success = false;
-        	if(replace) {
-        		success = OpenNet_UpdateObject(db,name,&obj);
-        	}else {
-        		success = OpenNet_AddObject(db,name,&obj);
-        	}
-        	if(success) {
-        		processDNS(name);
-        		callbacks_mtx.lock();
-        		if(callbacks.find(name) != callbacks.end()) {
-        			Callback callback = callbacks[name];
-        			CancelTimer(callback.cancellationToken);
-        			callbacks_mtx.unlock();
-        			callback.callback(&obj);
-        		}else {
-        			callbacks_mtx.unlock();
-        		}
-        	}else {
-        			//TODO: Failed to add object. Likely signature check failed.
-        			//Request a copy of the digital signature.
+		        	auto cvi = [&](NamedObject* obj){
+		        		if(obj) {
+		        			replace = true;
+		        			memcpy(&objVersion,obj->blob,4);
+		        			oldauth = obj->authority;
+		        		}
+		        	};
+		        	if(objVersion <=oldVersion) {
+		        		return;
+		        	}
+		        	void* tp = C(cvi,c);
+		        	OpenNet_Retrieve(db,name,tp,c);
+		        	if(obj.bloblen<4 || (oldauth != obj.authority && replace)) {
+		        	        		return;
+		        	        	}
+		        	bool success = false;
+		        	if(replace) {
+		        		success = OpenNet_UpdateObject(db,name,&obj);
+		        	}else {
+		        		success = OpenNet_AddObject(db,name,&obj);
+		        	}
+		        	if(success) {
+		        		processDNS(name);
+		        		callbacks_mtx.lock();
+		        		if(objectRequests.find(name) != objectRequests.end()) {
+		        			std::shared_ptr<WaitHandle> callback = objectRequests[name];
+		        			callbacks_mtx.unlock();
+		        			callback->success = true;
+		        			callback->evt.signal();
+		        		}else {
+		        			callbacks_mtx.unlock();
+		        		}
+		        	}else {
+		        			//TODO: Failed to add object. Likely signature check failed.
+		        			//Request a copy of the digital signature.
 
-        		callbacks_mtx.lock();
-        		CertCallback ccb;
-        		std::string auth = obj.authority;
-        		std::string objname = name;
-        		ccb.callback = [=](bool success){
-        			callbacks_mtx.lock();
-        			if(certCallbacks.find(auth) != certCallbacks.end()) {
-        				certCallbacks.erase(auth);
-        			}
-        			callbacks_mtx.unlock();
-        			//TODO: Resend request if successful
-        			if(success) {
-        				SendQuery_Raw(objname.data());
-        			}
-        		};
-        		ccb.cancellationToken = CreateTimer([=](){
-        			ccb.callback(false);
-        		},timeoutValue);
-        		certCallbacks[obj.authority] = ccb;
-        		callbacks_mtx.unlock();
-        			size_t len = 1+strlen(obj.authority)+1;
-        			unsigned char* packet = (unsigned char*)alloca(len);
-        			unsigned char* ptr = packet;
-        			*ptr = 2;
-        			ptr++;
-        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
-        			ptr+=strlen(obj.authority)+1;
-        			GlobalGrid_Identifier* identifiers;
-        			size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
+		        		callbacks_mtx.lock();
+		        		std::shared_ptr<WaitHandle> ccb = std::make_shared<WaitHandle>();
 
-        			for(size_t i = 0;i<length;i++) {
-        				GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,packet,len);
-        			}
-        			GlobalGrid_FreePeerList(identifiers);
-        	}
-        }
-        	break;
-        case 2:
-        {
-        	//TODO: Process Received certificate request
-        	const char* authority = s.ReadString();
-        	printf("Received certificate request for %s\n",authority);
-        	void(*callback)(void* thisptr, OCertificate* cert);
-        	thisptr = C([&](OCertificate* cert){
-        		if(cert) {
-                	size_t sz = 1+strlen(cert->authority)+1+4+cert->siglen+4+cert->pubLen;
-                	unsigned char* packet = (unsigned char*)alloca(sz);
-                	unsigned char* ptr = packet;
-                	*ptr = 3;
-                	ptr++;
-                	memcpy(ptr,cert->authority,strlen(cert->authority)+1);
-                	ptr+=strlen(cert->authority)+1;
-                	memcpy(ptr,&cert->siglen,4);
-                	ptr+=4;
-                	memcpy(ptr,cert->signature,cert->siglen);
-                	ptr+=cert->siglen;
-                	memcpy(ptr,&cert->pubLen,4);
-                	ptr+=4;
-                	memcpy(ptr,cert->pubkey,cert->pubLen);
-                	GlobalGrid_Send(connectionmanager,src,srcPort,1,packet,sz);
-        		}
-        	},callback);
-        	OpenNet_RetrieveCertificate(db,authority,thisptr,callback);
+		        		std::string auth = obj.authority;
+		        		std::string objname = name;
+		        		std::shared_ptr<TimerEvent> timer = CreateTimer([=](){
+		        			ccb->evt.signal();
+		        		},timeoutValue);
+		        		ccb->evt.wait();
+		        		//TODO: Possible problem here if timer has already gone off.
+		        		CancelTimer(timer);
+		        		if(ccb->success) {
+		        			//Resend request if successful
+		        			SendQuery_Raw(objname.data());
+		        		}
+		        		certRequests[obj.authority] = ccb;
 
-        }
-        break;
-        case 3:
-        {
-        	//Received certificate information
-        	printf("Received certificate\n");
-        	OCertificate cert;
-        	cert.authority = s.ReadString();
-        	uint32_t len;
-        	s.Read(len);
-        	cert.siglen = len;
-        	cert.signature = s.Increment(len);
-        	s.Read(len);
-        	cert.pubLen = len;
-        	cert.pubkey = s.Increment(len);
-        	void(*callback)(void*,const char*);
-        	CertCallback cb;
-        	bool found = false;
-        	thisptr = C([&](const char* thumbprint){
-        		if(thumbprint == 0) {
-        			printf("Error adding certificate to database\n");
-        			return;
-        		}
-        		printf("Certificate with thumbprint %s added to database.\n",thumbprint);
-        		callbacks_mtx.lock();
-        		if(certCallbacks.find(thumbprint) != certCallbacks.end()) {
-        			cb = certCallbacks[thumbprint];
-        			callbacks_mtx.unlock();
-        			CancelTimer(cb.cancellationToken);
-        			found = true;
-        		}else {
-        			callbacks_mtx.unlock();
-        		}
-        	},callback);
-        	printf("Adding certificate to database\n");
-        	OpenNet_AddCertificate(db,&cert,thisptr,callback);
-        	if(found) {
-        		cb.callback(true);
-        	}
-        }
-        	break;
-        case 4:
-        {
-        	//DNS resolution request (similar to New Year's resolution)
-        	const char* dns_name = s.ReadString();
-        	const char* dns_parent = s.ReadString();
-        	std::string name;
-        	auto bot = [&](const char* objname){
-        		if(objname) {
-        			name = objname;
-        		}
-        	};
-        	void(*callback)(void*,const char*);
-        	void* thisptr = C(bot,callback);
-        	OpenNet_FindDomain(db,dns_name,dns_parent,thisptr,callback);
-        	if(name.size()) {
-        		//Fake a query to our own server to search for the object BLOB
-        		unsigned char* request = (unsigned char*)alloca(1+name.size()+1);
-        		*request = 0;
-        		memcpy(request+1,name.data(),name.size()+1);
-        		processRequest(0,src,srcPort,request,1+name.size()+1);
+		        			size_t len = 1+strlen(obj.authority)+1;
+		        			unsigned char* packet = (unsigned char*)alloca(len);
+		        			unsigned char* ptr = packet;
+		        			*ptr = 2;
+		        			ptr++;
+		        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
+		        			ptr+=strlen(obj.authority)+1;
+		        			GlobalGrid_Identifier* identifiers;
+		        			size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
 
-        	}
-        }
-        	break;
-        case 5:
-        	break; //TODO: Uncomment this line to enable DMCA takedown compliance toolkit
-        	//TODO: DMCA takedown request; only process if signed by valid DMCA authority
-        	char* authority = s.ReadString();
-        	uint32_t reqlen;
-        	s.Read(reqlen);
-        	//Create virtual cryptographic "buffer"
-        	unsigned char* cryptBuffer = s.Increment(reqlen);
-        	uint32_t slen;
-        	s.Read(slen);
-        	unsigned char* sigBuffer = s.Increment(slen);
-        	unsigned char pubkey[] = {0, 0, 0, 0, 0}; //put DMCA authority public key here
-        	if(authority == "TODO: PUT DMCA AGENT STRING HERE") {
+		        			for(size_t i = 0;i<length;i++) {
+		        				GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,packet,len);
+		        			}
+		        			GlobalGrid_FreePeerList(identifiers);
+		        	}
+		        }
+		        	break;
+		        case 2:
+		        {
+		        	//TODO: Process Received certificate request
+		        	const char* authority = s.ReadString();
+		        	printf("Received certificate request for %s\n",authority);
+		        	void(*callback)(void* thisptr, OCertificate* cert);
+		        	thisptr = C([&](OCertificate* cert){
+		        		if(cert) {
+		                	size_t sz = 1+strlen(cert->authority)+1+4+cert->siglen+4+cert->pubLen;
+		                	unsigned char* packet = (unsigned char*)alloca(sz);
+		                	unsigned char* ptr = packet;
+		                	*ptr = 3;
+		                	ptr++;
+		                	memcpy(ptr,cert->authority,strlen(cert->authority)+1);
+		                	ptr+=strlen(cert->authority)+1;
+		                	memcpy(ptr,&cert->siglen,4);
+		                	ptr+=4;
+		                	memcpy(ptr,cert->signature,cert->siglen);
+		                	ptr+=cert->siglen;
+		                	memcpy(ptr,&cert->pubLen,4);
+		                	ptr+=4;
+		                	memcpy(ptr,cert->pubkey,cert->pubLen);
+		                	GlobalGrid_Send(connectionmanager,(unsigned char*)src,srcPort,1,packet,sz);
+		        		}
+		        	},callback);
+		        	OpenNet_RetrieveCertificate(db,authority,thisptr,callback);
 
-        		if(VerifySignature(cryptBuffer,reqlen,sigBuffer,slen,pubkey)) {
-        			//Process takedown request
-        			BStream k(cryptBuffer,reqlen);
-        			char* blobID = k.ReadString();
-        			DMCA_TakedownBlob(db,blobID); //TODO: Implement this
-        		}
-        	}
-        	break;
-        }
-    }catch(const char* err) {
-    	printf("Error: %s\n",err);
-    }
+		        }
+		        break;
+		        case 3:
+		        {
+		        	//Received certificate information
+		        	printf("Received certificate\n");
+		        	OCertificate cert;
+		        	cert.authority = s.ReadString();
+		        	uint32_t len;
+		        	s.Read(len);
+		        	cert.siglen = len;
+		        	cert.signature = s.Increment(len);
+		        	s.Read(len);
+		        	cert.pubLen = len;
+		        	cert.pubkey = s.Increment(len);
+		        	void(*callback)(void*,const char*);
+		        	std::shared_ptr<WaitHandle> cb;
+		        	bool found = false;
+		        	thisptr = C([&](const char* thumbprint){
+		        		if(thumbprint == 0) {
+		        			printf("Error adding certificate to database\n");
+		        			return;
+		        		}
+		        		printf("Certificate with thumbprint %s added to database.\n",thumbprint);
+		        		callbacks_mtx.lock();
+		        		if(certRequests.find(thumbprint) != certRequests.end()) {
+		        			cb = certRequests[thumbprint];
+		        			callbacks_mtx.unlock();
+		        			found = true;
+		        		}else {
+		        			callbacks_mtx.unlock();
+		        		}
+		        	},callback);
+		        	printf("Adding certificate to database\n");
+		        	OpenNet_AddCertificate(db,&cert,thisptr,callback);
+		        	if(found) {
+		        		cb->success = true;
+		        		cb->evt.signal();
+		        	}
+		        }
+		        	break;
+		        case 4:
+		        {
+		        	//DNS resolution request (similar to New Year's resolution)
+		        	const char* dns_name = s.ReadString();
+		        	const char* dns_parent = s.ReadString();
+		        	std::string name;
+		        	auto bot = [&](const char* objname){
+		        		if(objname) {
+		        			name = objname;
+		        		}
+		        	};
+		        	void(*callback)(void*,const char*);
+		        	void* thisptr = C(bot,callback);
+		        	OpenNet_FindDomain(db,dns_name,dns_parent,thisptr,callback);
+		        	if(name.size()) {
+		        		//Fake a query to our own server to search for the object BLOB
+		        		unsigned char* request = (unsigned char*)alloca(1+name.size()+1);
+		        		*request = 0;
+		        		memcpy(request+1,name.data(),name.size()+1);
+		        		processRequest(0,(unsigned char*)src,srcPort,request,1+name.size()+1);
+
+		        	}
+		        }
+		        	break;
+		        case 5:
+		        	break; //TODO: Uncomment this line to enable DMCA takedown compliance toolkit
+		        	//TODO: DMCA takedown request; only process if signed by valid DMCA authority
+		        	char* authority = s.ReadString();
+		        	uint32_t reqlen;
+		        	s.Read(reqlen);
+		        	//Create virtual cryptographic "buffer"
+		        	unsigned char* cryptBuffer = s.Increment(reqlen);
+		        	uint32_t slen;
+		        	s.Read(slen);
+		        	unsigned char* sigBuffer = s.Increment(slen);
+		        	unsigned char pubkey[] = {0, 0, 0, 0, 0}; //put DMCA authority public key here
+		        	if(authority == "TODO: PUT DMCA AGENT STRING HERE") {
+
+		        		if(VerifySignature(cryptBuffer,reqlen,sigBuffer,slen,pubkey)) {
+		        			//Process takedown request
+		        			BStream k(cryptBuffer,reqlen);
+		        			char* blobID = k.ReadString();
+		        			DMCA_TakedownBlob(db,blobID); //TODO: Implement this
+		        		}
+		        	}
+		        	break;
+		        }
+		    }catch(const char* err) {
+		    	printf("Error: %s\n",err);
+		    }
+	});
+
 }
 static void SendQuery_Raw(const char* name) {
 	//OPCODE, name
@@ -438,10 +458,9 @@ static void SendQuery_Raw(const char* name) {
 template<typename F>
 static void SendQuery(const char* name, const F& callback) {
 	callbacks_mtx.lock();
-	Callback cb;
-	cb.callback = callback;
-	cb.cancellationToken = CreateTimer([=](){callback(0);},timeoutValue);
-	callbacks[name] = cb;
+	std::shared_ptr<WaitHandle> cb = std::make_shared<WaitHandle>();
+	CreateTimer([=](){cb->evt.signal();},timeoutValue);
+	objectRequests[name] = cb;
 	callbacks_mtx.unlock();
     SendQuery_Raw(name);
 }
@@ -453,8 +472,8 @@ static void RunQuery(const char* _name, const F& callback) {
     std::string name = _name;
     auto invokeCallback = [=](NamedObject* obj) {
     	callbacks_mtx.lock();
-    	if(callbacks.find(name) != callbacks.end()) {
-    		callbacks.erase(name);
+    	if(objectRequests.find(name) != objectRequests.end()) {
+    		objectRequests.erase(name);
     	}
     	callbacks_mtx.unlock();
     	if(obj) {
