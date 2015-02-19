@@ -87,7 +87,8 @@ static void processDNS(const char* name) {
 	if(data.size()) {
 		BStream s(data.data(),data.size());
 		//Read DNS-ENC marker
-		if(std::string("DNS-ENC") == s.ReadString()) {
+		char* header = s.ReadString();
+		if(std::string("DNS-ENC") == header) {
 			//DNS name
 			const char* dname = s.ReadString();
 			if(strlen(dname) == 0) {
@@ -104,7 +105,6 @@ static void processDNS(const char* name) {
 			if(!verified) {
 				return;
 			}
-
 			//WE HAVE DNS!!!!
 			//TODO: Verify signature matches and add to database
 			//If we don't have signatures for parent zone; request them, then
@@ -121,19 +121,19 @@ static void processDNS(const char* name) {
 				};
 				void(*cb)(void*,NamedObject*);
 				void* thisptr = C(m,cb);
-				GGDNS_RunQuery(parent,thisptr,cb);
+				GGDNS_RunQuery(parent,thisptr,cb); //TODO: Possible deadlock here
 				if(parentAuthority.size()) {
 					if(parentAuthority == authority) {
 						//TODO: Verify rest of chain
-						printf("TODO: Verify chain\n");
+						std::cerr<<"Verify chain\n";
+					}else {
 					}
 				}else {
 					//Fail
-
 				}
 			}
 		}else {
-			if(std::string("DNS-ID") == s.ReadString()) {
+			if(std::string("DNS-ID") == header) {
 				//DNS-encoded ID (host information)
 				char* id = s.ReadString();
 				void* thisptr;
@@ -200,7 +200,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        case 0:
 		        {
 		            char* name = s.ReadString();
-		            printf("Request for %s\n",name);
 		            //GGDNS request entry
 		            void(*callback)(void*,NamedObject*);
 		            void* thisptr = C([&](NamedObject* obj){
@@ -233,7 +232,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	NamedObject obj;
 		        	obj.authority = s.ReadString();
 		        	const char* name = s.ReadString();
-		        	printf("Received ACK for %s from %s\n",name,obj.authority);
 		        	uint32_t val;
 		        	s.Read(val);
 		        	obj.bloblen = val;
@@ -322,7 +320,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        {
 		        	//TODO: Process Received certificate request
 		        	const char* authority = s.ReadString();
-		        	printf("Received certificate request for %s\n",authority);
 		        	void(*callback)(void* thisptr, OCertificate* cert);
 		        	thisptr = C([&](OCertificate* cert){
 		        		if(cert) {
@@ -350,7 +347,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        case 3:
 		        {
 		        	//Received certificate information
-		        	printf("Received certificate\n");
 		        	OCertificate cert;
 		        	cert.authority = s.ReadString();
 		        	uint32_t len;
@@ -365,10 +361,8 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	bool found = false;
 		        	thisptr = C([&](const char* thumbprint){
 		        		if(thumbprint == 0) {
-		        			printf("Error adding certificate to database\n");
 		        			return;
 		        		}
-		        		printf("Certificate with thumbprint %s added to database.\n",thumbprint);
 		        		callbacks_mtx.lock();
 		        		if(certRequests.find(thumbprint) != certRequests.end()) {
 		        			cb = certRequests[thumbprint];
@@ -378,7 +372,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			callbacks_mtx.unlock();
 		        		}
 		        	},callback);
-		        	printf("Adding certificate to database\n");
 		        	OpenNet_AddCertificate(db,&cert,thisptr,callback);
 		        	if(found) {
 		        		cb->success = true;
@@ -434,7 +427,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	break;
 		        }
 		    }catch(const char* err) {
-		    	printf("Error: %s\n",err);
+
 		    }
 	});
 
@@ -455,14 +448,29 @@ static void SendQuery_Raw(const char* name) {
 	    }
 	    delete[] buffer;
 }
+
+template<typename F>
+static void RunQuery(const char* _name, const F& callback);
 template<typename F>
 static void SendQuery(const char* name, const F& callback) {
-	callbacks_mtx.lock();
+
 	std::shared_ptr<WaitHandle> cb = std::make_shared<WaitHandle>();
 	CreateTimer([=](){cb->evt.signal();},timeoutValue);
+	callbacks_mtx.lock();
 	objectRequests[name] = cb;
 	callbacks_mtx.unlock();
+
     SendQuery_Raw(name);
+    cb->evt.wait();
+    if(cb->success) {
+    	void(*cb)(void*,NamedObject*);
+    	void* thisptr = C([&](NamedObject* obj){
+    		callback(obj);
+    	},cb);
+    	GGDNS_RunQuery(name,thisptr,cb);
+    	}else {
+    		callback(0);
+    	}
 }
 
 template<typename F>
@@ -488,8 +496,8 @@ static void RunQuery(const char* _name, const F& callback) {
         m = true;
         invokeCallback(obj);
     };
-    void* thisptr = C(bot,functor); //TODO: Why does name get corrupted here?
-    OpenNet_Retrieve(db,name.data(),thisptr,functor);
+    void* thisptr = C(bot,functor);
+    OpenNet_Retrieve(db,name.data(),thisptr,functor); //TODO: Not a deadlock. It's just NOT finding the object for some reason!
     if(!m) {
         //Send query
         SendQuery(name.data(),invokeCallback);
