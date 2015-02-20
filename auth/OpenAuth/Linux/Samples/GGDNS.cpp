@@ -116,21 +116,32 @@ static void processDNS(const char* name) {
 				//TODO: We are NOT root. Load parent node and check signature
 
 				std::string parentAuthority;
+				std::string parent_name = parent;
 				auto m = [&](NamedObject* obj){
 					parentAuthority = obj->authority;
 				};
 				void(*cb)(void*,NamedObject*);
 				void* thisptr = C(m,cb);
-				GGDNS_RunQuery(parent,thisptr,cb); //TODO: Possible deadlock here
+				GGDNS_RunQuery(parent_name.data(),thisptr,cb); //TODO: Possible deadlock here
 				if(parentAuthority.size()) {
 					if(parentAuthority == authority) {
-						//TODO: Verify rest of chain
-						std::cerr<<"Verify chain\n";
+						void(*t_cb)(void*,const char*,const char*);
+						void* t_a = C([&](const char* a,const char* b){
+							//WE'RE VERIFIED
+							OpenNet_AddDomain(db,dname,parent,name);
+						},t_cb);
+
+						OpenNet_FindReverseDomain(db,parent_name.data(),t_a,t_cb);
+
 					}else {
+						//Fail. Bad authority (mismatch).
+						return;
 					}
 				}else {
 					//Fail
+					return;
 				}
+
 			}
 		}else {
 			if(std::string("DNS-ID") == header) {
@@ -245,7 +256,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	memcpy(&oldVersion,obj.blob,4);
 		        	void(*c)(void*, NamedObject*);
 		        	std::string oldauth;
-
 		        	auto cvi = [&](NamedObject* obj){
 		        		if(obj) {
 		        			replace = true;
