@@ -146,7 +146,9 @@ static void processDNS(const char* name) {
 		}else {
 			if(std::string("DNS-ID") == header) {
 				//DNS-encoded ID (host information)
+
 				char* id = s.ReadString();
+
 				void* thisptr;
 				void(*cb)(void*,const char*,const char*);
 				bool hasValidDomain = false;
@@ -157,6 +159,7 @@ static void processDNS(const char* name) {
 				OpenNet_FindReverseDomain(db,id,thisptr,cb);
 				if(hasValidDomain) {
 					//Check if signature matches authority
+
 					void* tptr;
 					void(*r_cb)(void*,NamedObject*);
 					bool sigMatches = false;
@@ -165,11 +168,12 @@ static void processDNS(const char* name) {
 						dreader.ReadString();
 						dreader.ReadString();
 						dreader.ReadString();
+
 						if(authority == dreader.ReadString()) {
 							sigMatches = true;
 						}
 					},r_cb);
-					GGDNS_RunQuery(name,tptr,r_cb);
+					GGDNS_RunQuery(id,tptr,r_cb);
 					if(sigMatches) {
 						OpenNet_AddDomainPtr(db,id,name);
 					}

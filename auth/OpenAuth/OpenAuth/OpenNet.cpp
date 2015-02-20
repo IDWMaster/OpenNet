@@ -419,7 +419,7 @@ extern "C" {
     	}
     	sqlite3_reset(query);
     	if(name.size()) {
-    		OpenNet_Retrieve(db,objid,thisptr,callback);
+    		OpenNet_Retrieve(db,name.data(),thisptr,callback);
     	}
 
     }

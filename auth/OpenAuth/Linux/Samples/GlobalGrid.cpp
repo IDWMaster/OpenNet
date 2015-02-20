@@ -40,7 +40,7 @@ GGDNS_Init(mngr->nativePtr);
 
 
 if(argc == 1) {
-	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\nrequestDomain -- requests a domain. The domain must be in the format domainName.parent, where domainName is the child domain being requested, and parent is the pointer to the authoritative object to which the request is being made. Also requires a signing certificate to be specified.\n");
+	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\nrequestDomain -- requests a domain. The domain must be in the format domainName.parent, where domainName is the child domain being requested, and parent is the pointer to the authoritative object to which the request is being made. Also requires a signing certificate to be specified.\nupdateHost -- Associates host information with the specified domain (requires a pointer to the domain as an argument)\ngetHost -- Retrieves a host record for a specified domain pointer.\n");
 
 }else {
 	if(argv[1] == std::string("enumPrivateKeys")) {
@@ -132,7 +132,21 @@ if(argc == 1) {
 									write(STDOUT_FILENO,data,len);
 								},cb);
 								GGDNS_MakeDomain(mf.data(),parentDot+1,argv[3],thisptr,cb);
-
+						}else {
+							if(argv[1] == std::string("updateHost")) {
+								unsigned char data[1024*4];
+								int avail = read(STDIN_FILENO,data,1024*4);
+								GGDNS_MakeHost(argv[2],data,avail);
+							}else {
+								if(argv[1] == std::string("getHost")) {
+									void* thisptr;
+									void(*cb)(void*,unsigned char*,size_t);
+									thisptr = C([&](unsigned char* data,size_t len){
+										write(STDIN_FILENO,data,len);
+									},cb);
+									GGDNS_GetGuidListForObject(argv[2],thisptr,cb);
+								}
+							}
 						}
 					}
 				}
