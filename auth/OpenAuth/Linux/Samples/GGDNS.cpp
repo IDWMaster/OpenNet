@@ -1,4 +1,4 @@
-
+#define charmander char mander
 #include <GlobalGrid.h>
 #include <InternetProtocol.h>
 #include <OpenAuth.h>
@@ -42,7 +42,7 @@ public:
     }
     char* ReadString() {
         char* retval = (char*)ptr;
-        char mander;
+        charmander;
         while(Read(mander) != 0){}
         return retval;
     }
