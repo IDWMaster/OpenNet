@@ -40,7 +40,7 @@ GGDNS_Init(mngr->nativePtr);
 
 
 if(argc == 1) {
-	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\n");
+	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\nrequestDomain -- requests a domain. The domain must be in the format domainName.parent, where domainName is the child domain being requested, and parent is the pointer to the authoritative object to which the request is being made. Also requires a signing certificate to be specified.\n");
 
 }else {
 	if(argv[1] == std::string("enumPrivateKeys")) {
