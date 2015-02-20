@@ -425,9 +425,6 @@ extern "C" {
     }
     void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
-    	//TODO: Fails on NULL values because engine can't do = NULL, you need to use IS NULL
-    	//conditionally. Unfortunately; we may need two separate queries for this....
-    	printf("Finding domain %s with parent %s using command %p\n",domain,parent,keydb->command_findDomain);
     	sqlite3_stmt* query = keydb->command_findDomain;
     	if(strlen(parent)) {
     	  	sqlite3_bind_text(query,2,parent,strlen(parent),0);
@@ -439,7 +436,6 @@ extern "C" {
     	int val;
     	while((val = sqlite3_step(query)) != SQLITE_DONE) {
     		if(val == SQLITE_ROW) {
-    			printf("Found domain\n");
     			callback(thisptr,(char*)sqlite3_column_text(query,0));
     		}
     	}
