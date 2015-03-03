@@ -121,6 +121,8 @@ public:
     sqlite3_stmt* command_takedownBlob;
     sqlite3_stmt* command_retrieveDomainPtr;
     sqlite3_stmt* command_addDomainPtr;
+    sqlite3_stmt* command_findReplicas;
+    sqlite3_stmt* command_findMissingReplicas;
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates)) != SQLITE_DONE) {
@@ -233,7 +235,7 @@ public:
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS DomainPointers (DomainID TEXT NOT NULL PRIMARY KEY, ObjectID TEXT NOT NULL)",0,0,&err);
 
         //Replica server list (per-object)
-        sqlite3_exec(db,"CREATE TABLE IF NOT EXISTS Replicas (ObjectName TEXT, ServerID TEXT, PRIMARY KEY(ObjectName, ServerID))",0,0,&err);
+        sqlite3_exec(db,"CREATE TABLE IF NOT EXISTS Replicas (ObjectName TEXT, ServerID TEXT, replicaCount INTEGER, PRIMARY KEY(ObjectName, ServerID))",0,0,&err);
         std::string sql = "INSERT OR IGNORE INTO Certificates VALUES (?, ?, ?, ?)";
 		const char* parsed;
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addcert, &parsed);
@@ -261,7 +263,7 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
         sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomain,&parsed);
-        sql = "INSERT OR IGNORE INTO Replicas VALUES (?, ?)";
+        sql = "INSERT OR IGNORE INTO Replicas VALUES (?, ?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addReplica,&parsed);
         sql = "DELETE FROM NamedObjects WHERE Name = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_takedownBlob,&parsed);
@@ -269,6 +271,10 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_retrieveDomainPtr,&parsed);
         sql = "INSERT INTO DomainPointers VALUES (?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomainPtr,&parsed);
+        sql = "SELECT ServerID FROM Replicas WHERE ObjectName = ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReplicas,&parsed);
+        sql = "SELECT ObjectName FROM Replicas WHERE ReplicaCount < ?";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findMissingReplicas,&parsed);
 
         int status = 0;
         bool hasKey = false;
@@ -372,6 +378,8 @@ public:
         sqlite3_finalize(command_retrieveDomainPtr);
         sqlite3_finalize(command_addDomainPtr);
         sqlite3_finalize(command_findRootDomain);
+        sqlite3_finalize(command_findMissingReplicas);
+        sqlite3_finalize(command_findReplicas);
 		sqlite3_close(db);
 	}
 };
@@ -628,6 +636,55 @@ extern "C" {
     	KeyDatabase* keydb = (KeyDatabase*)db;
     	char* err;
     	sqlite3_exec(keydb->db, "COMMIT TRANSACTION",0,0,&err);
+
+    }
+
+    void OpenNet_GetMissingReplicas(void* db, void* thisptr, bool(*callback)(void*,const char*)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	sqlite3_stmt* apocalypse = keydb->command_findMissingReplicas;
+
+    	while(sqlite3_step(apocalypse) != SQLITE_DONE) {
+    		if(callback(thisptr,sqlite3_column_text(apocalypse,0)) == 0) {
+    			break;
+    		}
+    	}
+    	sqlite3_reset(apocalypse);
+    }
+    void OpenNet_AddReplica(void* db, const char* blob, const unsigned char* id) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	sqlite3_stmt* query = keydb->command_findReplicas;
+    	sqlite3_bind_text(query,1,blob,strlen(blob),0);
+    	int val;
+    	bool hasValue = false;
+    	while((val = sqlite3_step(query)) != SQLITE_DONE) {
+    		if(val == SQLITE_ROW) {
+    			hasValue = true;
+    			break;
+    		}
+    	}
+
+    	unsigned char* newval;
+    	size_t newlen;
+    	if(hasValue) {
+    		unsigned char* prev = (unsigned char*)sqlite3_column_blob(query,0);
+    		size_t prevlen = sqlite3_column_bytes(query,0);
+    		newval = new unsigned char[prevlen+16];
+    		newlen = prevlen+16;
+    		memcpy(newval,prev,prevlen);
+    	}else {
+    		newval = new unsigned char[16];
+    		newlen = 16;
+    	}
+    	sqlite3_reset(query);
+
+    	query = keydb->command_addReplica;
+    	//objname,servers,length (number of servers)
+    	sqlite3_bind_text(query,1,blob,strlen(blob),0);
+    	sqlite3_bind_blob(query,2,newval,newlen,0);
+    	sqlite3_bind_int(query,3,newlen/16);
+    	while(sqlite3_step(query) !=SQLITE_DONE){};
+    	sqlite3_reset(query);
+    	delete[] newval;
 
     }
 }

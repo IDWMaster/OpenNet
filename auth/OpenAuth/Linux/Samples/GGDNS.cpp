@@ -674,6 +674,9 @@ void GGDNS_MakeDomain(const char* name, const char* parent, const char* authorit
 void* GGDNS_db() {
 	return db;
 }
+static void replicate() {
+
+}
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
     uint32_t revisionID = 0;
     void(*cm)(void*,NamedObject*);
@@ -700,22 +703,6 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     processDNS(name);
     *object = ival;
     delete[] data;
-    if(callback) {
-    	//TODO: Not yet implemented.
-    	GlobalGrid_Identifier* ids;
-    	size_t count = GlobalGrid_GetPeerList(connectionmanager,&ids);
-    	if(count<replicaCount) {
-    		callback(thisptr,false);
-    	}else {
-    		for(size_t i = 0;i<count;i++) {
-
-    		}
-    		GlobalGrid_FreePeerList(ids);
-    		callback(thisptr,false);
-    	}
-
-
-    }
 }
 
 void GGDNS_RunQuery(const char* name,void* thisptr, void(*callback)(void*,NamedObject*)) {

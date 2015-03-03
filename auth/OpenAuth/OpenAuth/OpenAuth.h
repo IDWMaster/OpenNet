@@ -59,7 +59,8 @@ extern "C" {
     void OpenNet_SignData(void* db, const char* authority, unsigned char* data, size_t sz, void* thisptr, void(*callback)(void*,unsigned char*,size_t));
     void OpenNet_AddDomainPtr(void* db, const char* objid, const char* ptrObject);
     void OpenNet_RetrieveDomainPtr(void* db, const char* objid, void* thisptr, void(*callback)(void*,NamedObject*));
-
+    void OpenNet_GetReplicas(void* db, const char* blob, void* thisptr, bool(*callback)(void*,const unsigned char*));
+    void OpenNet_AddReplica(void* db, const char* blob, const unsigned char* id);
 #ifdef __cplusplus
 }
 #endif
