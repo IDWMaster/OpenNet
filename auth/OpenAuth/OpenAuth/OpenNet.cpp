@@ -263,7 +263,7 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
         sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomain,&parsed);
-        sql = "INSERT OR IGNORE INTO Replicas VALUES (?, ?, ?)";
+        sql = "INSERT OR IGNORE INTO Replicas VALUES (?1, ?2, ?3); UPDATE Replicas SET ServerID = ?2, replicaCount = ?3 WHERE ObjectName = ?1";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addReplica,&parsed);
         sql = "DELETE FROM NamedObjects WHERE Name = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_takedownBlob,&parsed);
@@ -642,9 +642,9 @@ extern "C" {
     void OpenNet_GetMissingReplicas(void* db, void* thisptr, bool(*callback)(void*,const char*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
     	sqlite3_stmt* apocalypse = keydb->command_findMissingReplicas;
-
+    	sqlite3_bind_int(apocalypse,1,(int)OpenNet_replicaCount);
     	while(sqlite3_step(apocalypse) != SQLITE_DONE) {
-    		if(callback(thisptr,sqlite3_column_text(apocalypse,0)) == 0) {
+    		if(callback(thisptr,(const char*)sqlite3_column_text(apocalypse,0)) == 0) {
     			break;
     		}
     	}
@@ -687,4 +687,5 @@ extern "C" {
     	delete[] newval;
 
     }
+    size_t OpenNet_replicaCount;
 }

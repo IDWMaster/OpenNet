@@ -8,7 +8,6 @@
 #include <uuid/uuid.h>
 #include "GGDNS.h"
 #include <memory>
-static size_t replicaCount = 0;
 static size_t timeoutValue = 5000;
 class BStream {
 public:
@@ -535,7 +534,7 @@ void GGDNS_Init(void* manager) {
     GGDNS_Initialize(manager);
 }
 void GGDNS_SetReplicaCount(size_t count) {
-	replicaCount = count;
+	OpenNet_replicaCount = count;
 }
 void GGDNS_EnumPrivateKeys(void* thisptr,bool(*enumCallback)(void*,const char*)) {
     OpenNet_OAuthEnumPrivateKeys(db,thisptr,enumCallback);
@@ -675,6 +674,68 @@ void* GGDNS_db() {
 	return db;
 }
 static void replicate() {
+	void* thisptr;
+	bool(*cb)(void*,const char*);
+	std::vector<std::string> toBeContinued;
+	thisptr = C([&](const char* name){
+		toBeContinued.push_back(name);
+		return true;
+	},cb);
+	OpenNet_GetMissingReplicas(db,thisptr,cb);
+
+	for(size_t i = 0;i<toBeContinued.size();i++) {
+		size_t reqsz = 1+toBeContinued[i].size()+1;
+		unsigned char* izard = new unsigned char[reqsz];
+		*izard = 0;
+		std::string stackstring = toBeContinued[i];
+		memcpy(izard+1,stackstring.data(),stackstring.size()+1);
+
+		//TODO: Get the replica set information
+		std::string parentDomain;
+		void* thisptr_;
+		void(*cb_)(void*,const char*,const char*);
+		thisptr = C([&](const char* name, const char* parentID){
+			if(parentID) {
+				parentDomain = parentID;
+			}
+		},cb_);
+		OpenNet_FindReverseDomain(db,stackstring.data(),thisptr_,cb_);
+		if(parentDomain.size()) {
+			//We have child authoritative domain
+			unsigned char* guidlist = 0;
+			size_t gsize = 0;
+			void *thisptr__ ;
+			void(*cb__)(void*,unsigned char*,size_t);
+			thisptr__ = C([&](unsigned char* list,size_t bytes){
+				if(bytes % 16 == 0) {
+				guidlist = new unsigned char[bytes];
+				gsize = bytes;
+				memcpy(guidlist,list,bytes);
+				}
+			},cb__);
+			 GGDNS_GetGuidListForObject(parentDomain.data(),thisptr__,cb__);
+
+			 if(guidlist) {
+				 for(size_t c = 0;c<gsize;c+=16) {
+						processRequest(0,guidlist+c,1,izard,reqsz);
+				 }
+				 delete[] guidlist;
+			 }
+
+		}
+
+
+
+		GlobalGrid_Identifier* list;
+		size_t glen = GlobalGrid_GetPeerList(connectionmanager,&list);
+		for(size_t i = 0;i<glen;i++) {
+			processRequest(0,(unsigned char*)list+i,1,izard,reqsz);
+		}
+		GlobalGrid_FreePeerList(list);
+
+
+	}
+
 
 }
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
@@ -701,6 +762,7 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
 
     OpenNet_MakeObject(db,name,&ival,val);
     processDNS(name);
+    replicate();
     *object = ival;
     delete[] data;
 }
