@@ -296,7 +296,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			//Request a copy of the digital signature.
 
 
-	                    std::cerr<<"RECV: SIG CHECK ERR\n";
+	                    std::cerr<<"RECV: SIG CHECK ERR AUTH "<<obj.authority<<std::endl;
 		        		callbacks_mtx.lock();
 		        		std::shared_ptr<WaitHandle> ccb = std::make_shared<WaitHandle>();
 
