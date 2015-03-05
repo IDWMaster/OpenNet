@@ -322,7 +322,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
 		        			ptr+=strlen(obj.authority)+1;
 		        			GlobalGrid_Identifier* identifiers;
-
+		        			std::cerr<<"Sent CERT request for "<<obj.authority<<std::endl;
 		        				GlobalGrid_Send(connectionmanager,(unsigned char*)src,1,1,packet,len);
 
 		        	}
