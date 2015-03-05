@@ -537,6 +537,14 @@ extern "C" {
             }
         }
         sqlite3_reset(realdb->command_findPrivateKey);
+
+        //TODO: Mark as needing replica
+        sqlite3_stmt* query = realdb->command_addReplica;
+        sqlite3_bind_text(query,1,name,strlen(name),0);
+        sqlite3_bind_null(query,2);
+        sqlite3_bind_int(query,3,0);
+        while(sqlite3_step(query) != SQLITE_DONE) {}
+        sqlite3_reset(query);
     }
 
     bool OpenNet_AddObject(void* db, const char* name, const NamedObject* obj) {

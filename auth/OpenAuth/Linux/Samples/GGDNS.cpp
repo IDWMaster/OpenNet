@@ -214,6 +214,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        case 0:
 		        {
 		            char* name = s.ReadString();
+
 		            //GGDNS request entry
 		            void(*callback)(void*,NamedObject*);
 		            void* thisptr = C([&](NamedObject* obj){
@@ -234,7 +235,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		                    memcpy(ptr,&obj->siglen,4);
 		                    ptr+=4;
 		                    memcpy(ptr,obj->signature,obj->siglen);
-
 		                    GlobalGrid_Send(connectionmanager,(unsigned char*)src,srcPort,1,response,sz);
 		                    free(response);
 		            },callback);
@@ -295,6 +295,8 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			//TODO: Failed to add object. Likely signature check failed.
 		        			//Request a copy of the digital signature.
 
+
+	                    std::cerr<<"RECV: SIG CHECK ERR\n";
 		        		callbacks_mtx.lock();
 		        		std::shared_ptr<WaitHandle> ccb = std::make_shared<WaitHandle>();
 
@@ -518,6 +520,74 @@ static void RunQuery(const char* _name, const F& callback) {
     	SendQuery_Raw(name.data());
     }
 }
+static void replicate() {
+	void* thisptr;
+	bool(*cb)(void*,const char*);
+	std::vector<std::string> toBeContinued;
+	thisptr = C([&](const char* name){
+		toBeContinued.push_back(name);
+		return true;
+	},cb);
+	OpenNet_GetMissingReplicas(db,thisptr,cb);
+
+	for(size_t i = 0;i<toBeContinued.size();i++) {
+		size_t reqsz = 1+toBeContinued[i].size()+1;
+		unsigned char* izard = new unsigned char[reqsz];
+		*izard = 0;
+		std::string stackstring = toBeContinued[i];
+		std::cerr<<stackstring<<std::endl;
+		memcpy(izard+1,stackstring.data(),stackstring.size()+1);
+
+		//TODO: Get the replica set information
+		std::string parentDomain;
+		void* thisptr_;
+		void(*cb_)(void*,const char*,const char*);
+		thisptr = C([&](const char* name, const char* parentID){
+			if(parentID) {
+				parentDomain = parentID;
+			}
+		},cb_);
+		OpenNet_FindReverseDomain(db,stackstring.data(),thisptr_,cb_);
+		if(parentDomain.size()) {
+			//We have child authoritative domain
+			unsigned char* guidlist = 0;
+			size_t gsize = 0;
+			void *thisptr__ ;
+			void(*cb__)(void*,unsigned char*,size_t);
+			thisptr__ = C([&](unsigned char* list,size_t bytes){
+				if(bytes % 16 == 0) {
+				guidlist = new unsigned char[bytes];
+				gsize = bytes;
+				memcpy(guidlist,list,bytes);
+				}
+			},cb__);
+			 GGDNS_GetGuidListForObject(parentDomain.data(),thisptr__,cb__);
+
+			 if(guidlist) {
+				 for(size_t c = 0;c<gsize;c+=16) {
+						processRequest(0,guidlist+c,1,izard,reqsz);
+				 }
+				 delete[] guidlist;
+			 }
+
+		}
+
+
+
+		GlobalGrid_Identifier* list;
+		size_t glen = GlobalGrid_GetPeerList(connectionmanager,&list);
+		for(size_t i = 0;i<glen;i++) {
+			processRequest(0,(unsigned char*)(list+i),1,izard,reqsz);
+		}
+		GlobalGrid_FreePeerList(list);
+
+
+	}
+
+
+}
+
+
 static void GGDNS_Initialize(void* manager) {
 db = OpenNet_OAuthInitialize();
     ReceiveCallback onReceived;
@@ -525,6 +595,11 @@ db = OpenNet_OAuthInitialize();
     onReceived.onReceived = processRequest;
     GlobalGrid_OpenPort(manager,1,onReceived);
     connectionmanager = manager;
+
+    RetryOperation([](std::function<void()> completion){
+    	replicate();
+    },800,-1,[=](){});
+    GGDNS_SetReplicaCount(1);
 }
 
 
@@ -673,71 +748,7 @@ void GGDNS_MakeDomain(const char* name, const char* parent, const char* authorit
 void* GGDNS_db() {
 	return db;
 }
-static void replicate() {
-	void* thisptr;
-	bool(*cb)(void*,const char*);
-	std::vector<std::string> toBeContinued;
-	thisptr = C([&](const char* name){
-		toBeContinued.push_back(name);
-		return true;
-	},cb);
-	OpenNet_GetMissingReplicas(db,thisptr,cb);
 
-	for(size_t i = 0;i<toBeContinued.size();i++) {
-		size_t reqsz = 1+toBeContinued[i].size()+1;
-		unsigned char* izard = new unsigned char[reqsz];
-		*izard = 0;
-		std::string stackstring = toBeContinued[i];
-		memcpy(izard+1,stackstring.data(),stackstring.size()+1);
-
-		//TODO: Get the replica set information
-		std::string parentDomain;
-		void* thisptr_;
-		void(*cb_)(void*,const char*,const char*);
-		thisptr = C([&](const char* name, const char* parentID){
-			if(parentID) {
-				parentDomain = parentID;
-			}
-		},cb_);
-		OpenNet_FindReverseDomain(db,stackstring.data(),thisptr_,cb_);
-		if(parentDomain.size()) {
-			//We have child authoritative domain
-			unsigned char* guidlist = 0;
-			size_t gsize = 0;
-			void *thisptr__ ;
-			void(*cb__)(void*,unsigned char*,size_t);
-			thisptr__ = C([&](unsigned char* list,size_t bytes){
-				if(bytes % 16 == 0) {
-				guidlist = new unsigned char[bytes];
-				gsize = bytes;
-				memcpy(guidlist,list,bytes);
-				}
-			},cb__);
-			 GGDNS_GetGuidListForObject(parentDomain.data(),thisptr__,cb__);
-
-			 if(guidlist) {
-				 for(size_t c = 0;c<gsize;c+=16) {
-						processRequest(0,guidlist+c,1,izard,reqsz);
-				 }
-				 delete[] guidlist;
-			 }
-
-		}
-
-
-
-		GlobalGrid_Identifier* list;
-		size_t glen = GlobalGrid_GetPeerList(connectionmanager,&list);
-		for(size_t i = 0;i<glen;i++) {
-			processRequest(0,(unsigned char*)list+i,1,izard,reqsz);
-		}
-		GlobalGrid_FreePeerList(list);
-
-
-	}
-
-
-}
 void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  void(*callback)(void*,bool)) {
     uint32_t revisionID = 0;
     void(*cm)(void*,NamedObject*);
@@ -762,6 +773,7 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
 
     OpenNet_MakeObject(db,name,&ival,val);
     processDNS(name);
+
     replicate();
     *object = ival;
     delete[] data;
