@@ -322,12 +322,9 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
 		        			ptr+=strlen(obj.authority)+1;
 		        			GlobalGrid_Identifier* identifiers;
-		        			size_t length = GlobalGrid_GetPeerList(connectionmanager,&identifiers);
 
-		        			for(size_t i = 0;i<length;i++) {
-		        				GlobalGrid_Send(connectionmanager,(unsigned char*)identifiers[i].value,1,1,packet,len);
-		        			}
-		        			GlobalGrid_FreePeerList(identifiers);
+		        				GlobalGrid_Send(connectionmanager,(unsigned char*)src,1,1,packet,len);
+
 		        	}
 		        }
 		        	break;
@@ -335,6 +332,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        {
 		        	//TODO: Process Received certificate request
 		        	const char* authority = s.ReadString();
+		        	std::cerr<<"Authority request for "<<authority<<std::endl;
 		        	void(*callback)(void* thisptr, OCertificate* cert);
 		        	thisptr = C([&](OCertificate* cert){
 		        		if(cert) {
