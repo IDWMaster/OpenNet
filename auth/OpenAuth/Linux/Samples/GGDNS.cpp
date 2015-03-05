@@ -297,7 +297,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 
 
 	                    std::cerr<<"RECV: SIG CHECK ERR AUTH "<<obj.authority<<std::endl;
-		        		callbacks_mtx.lock();
 		        		std::shared_ptr<WaitHandle> ccb = std::make_shared<WaitHandle>();
 
 		        		std::string auth = obj.authority;
@@ -312,8 +311,12 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			//Resend request if successful
 		        			SendQuery_Raw(objname.data());
 		        		}
-		        		certRequests[obj.authority] = ccb;
+		        		std::cerr<<"Lock acquire\n";
+		        		callbacks_mtx.lock();
 
+		        		certRequests[obj.authority] = ccb;
+		        			callbacks_mtx.unlock();
+		        			std::cerr<<"Lock release\n";
 		        			size_t len = 1+strlen(obj.authority)+1;
 		        			unsigned char* packet = (unsigned char*)alloca(len);
 		        			unsigned char* ptr = packet;
