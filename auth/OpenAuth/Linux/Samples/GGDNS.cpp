@@ -301,6 +301,16 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 
 		        		std::string auth = obj.authority;
 		        		std::string objname = name;
+	        			size_t len = 1+strlen(obj.authority)+1;
+	        			unsigned char* packet = (unsigned char*)alloca(len);
+	        			unsigned char* ptr = packet;
+	        			*ptr = 2;
+	        			ptr++;
+	        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
+	        			ptr+=strlen(obj.authority)+1;
+	        			std::cerr<<"Sent CERT request for "<<obj.authority<<std::endl;
+	        				GlobalGrid_Send(connectionmanager,(unsigned char*)src,1,1,packet,len);
+
 		        		std::shared_ptr<TimerEvent> timer = CreateTimer([=](){
 		        			ccb->evt.signal();
 		        		},timeoutValue);
@@ -317,16 +327,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        		certRequests[obj.authority] = ccb;
 		        			callbacks_mtx.unlock();
 		        			std::cerr<<"Lock release\n";
-		        			size_t len = 1+strlen(obj.authority)+1;
-		        			unsigned char* packet = (unsigned char*)alloca(len);
-		        			unsigned char* ptr = packet;
-		        			*ptr = 2;
-		        			ptr++;
-		        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
-		        			ptr+=strlen(obj.authority)+1;
-		        			GlobalGrid_Identifier* identifiers;
-		        			std::cerr<<"Sent CERT request for "<<obj.authority<<std::endl;
-		        				GlobalGrid_Send(connectionmanager,(unsigned char*)src,1,1,packet,len);
 
 		        	}
 		        }
