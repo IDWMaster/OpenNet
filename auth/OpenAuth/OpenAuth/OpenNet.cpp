@@ -676,9 +676,17 @@ extern "C" {
     	if(hasValue) {
     		unsigned char* prev = (unsigned char*)sqlite3_column_blob(query,0);
     		size_t prevlen = sqlite3_column_bytes(query,0);
+    		for(size_t i = 0;i<prevlen;i+=16) {
+    			if(memcmp(id,prev+i,16) == 0) {
+    				//Invalid
+    				sqlite3_reset(query);
+    				return;
+    			}
+    		}
     		newval = new unsigned char[prevlen+16];
     		newlen = prevlen+16;
     		memcpy(newval,prev,prevlen);
+
     	}else {
     		newval = new unsigned char[16];
     		newlen = 16;

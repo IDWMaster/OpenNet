@@ -9,6 +9,7 @@
 #include "GGDNS.h"
 #include <memory>
 static size_t timeoutValue = 5000;
+static void sendObjectTo(const char* name, unsigned char* dest);
 class BStream {
 public:
     unsigned char* ptr;
@@ -282,6 +283,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	}
 		        	if(success) {
 		        		processDNS(name);
+		        		OpenNet_AddReplica(db,name,src);
 		        		callbacks_mtx.lock();
 		        		if(objectRequests.find(name) != objectRequests.end()) {
 		        			std::shared_ptr<WaitHandle> callback = objectRequests[name];
@@ -521,6 +523,18 @@ static void RunQuery(const char* _name, const F& callback) {
     	SendQuery_Raw(name.data());
     }
 }
+
+static void sendObjectTo(const char* name, unsigned char* dest) {
+	size_t len = 1+strlen(name)+1;
+	unsigned char* msg = new unsigned char[len];
+	*msg = 0;
+	memcpy(msg+1,name,strlen(name));
+	processRequest(0,dest,1,msg,len);
+	GlobalGrid_Send(connectionmanager,dest,1,1,msg,len);
+	delete[] msg;
+
+
+}
 static void replicate() {
 	void* thisptr;
 	bool(*cb)(void*,const char*);
@@ -532,12 +546,9 @@ static void replicate() {
 	OpenNet_GetMissingReplicas(db,thisptr,cb);
 
 	for(size_t i = 0;i<toBeContinued.size();i++) {
-		size_t reqsz = 1+toBeContinued[i].size()+1;
-		unsigned char* izard = new unsigned char[reqsz];
-		*izard = 0;
+
 		std::string stackstring = toBeContinued[i];
 		std::cerr<<stackstring<<std::endl;
-		memcpy(izard+1,stackstring.data(),stackstring.size()+1);
 
 		//TODO: Get the replica set information
 		std::string parentDomain;
@@ -566,7 +577,7 @@ static void replicate() {
 
 			 if(guidlist) {
 				 for(size_t c = 0;c<gsize;c+=16) {
-						processRequest(0,guidlist+c,1,izard,reqsz);
+					 sendObjectTo(stackstring.data(),guidlist+c);
 				 }
 				 delete[] guidlist;
 			 }
