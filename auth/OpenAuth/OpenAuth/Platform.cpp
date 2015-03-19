@@ -3,43 +3,83 @@
 #include "stdafx.h"
 
 #include "OpenAuth.h"
-
-#include <sha.h>
-#include <rsa.h>
 using namespace System;
-
-namespace OpenAuth {
-
-	public ref class AuthenticationProvider
-	{
-
-	};
-}
+using namespace System::IO;
+using namespace System::Security;
+using namespace System::Security::Cryptography;
+using namespace System::Runtime::InteropServices;
 
 class IDisposable {
 public:
 	virtual ~IDisposable(){};
 };
+template<typename T>
+class ManagedObject:public ::IDisposable {
+public:
+	GCHandle handle;
+	ManagedObject(T^ obj){
+		handle = GCHandle::Alloc(obj);
+	}
+	operator T ^ () {
+		return (T^)handle.Target;
+	}
+	~ManagedObject() {
+		handle.Free();
+	}
+};
+
+
+#define R(output) Read(str,output)
+template<typename T>
+static void Read(unsigned char*& str, T& output) {
+	memcpy(&output, str, sizeof(output));
+	str += sizeof(output);
+}
+
+
+
 #define CP(val,type)((type*)val)
 #define C(val,type)((type)val)
-using namespace CryptoPP;
 extern "C" {
 	void* CreateHash() {
-		return new SHA1();
+		return new ManagedObject<MemoryStream>(gcnew MemoryStream());
 	}
 	void UpdateHash(void* hash, const unsigned char* data, size_t sz) {
-		CP(hash, SHA1)->Update(data, sz);
+		MemoryStream^ str = *CP(hash, ManagedObject<MemoryStream>);
+		array<unsigned char>^ mray = gcnew array<unsigned char>(sz);
+		str->Write(mray, 0, sz);
 	}
 	void FinalizeHash(void* hash, unsigned char* output) {
-		CP(hash, SHA1)->Final(output);
-		delete CP(hash, SHA1);
+		MemoryStream^ myStream = *CP(hash, ManagedObject<MemoryStream>);
+		array<unsigned char>^ dataBytes = myStream->ToArray();
+		SHA256^ mhash = SHA256::Create();
+		mhash->ComputeHash(dataBytes);
+		pin_ptr<unsigned char> rawData = &dataBytes[0];
+		memcpy(output, rawData, dataBytes->Length);
 	}
-	bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen) {
-		RSASSA_PKCS1v15_SHA_Verifier verifier;
-		return verifier.VerifyMessage(data, dlen, signature, slen);
+	
+	bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen, unsigned char* key) {
+		RSACryptoServiceProvider^ msa = gcnew RSACryptoServiceProvider();
+		RSAParameters rsaArguments;
+		unsigned char hash[SHA256_DIGEST_LENGTH];
+		SHA256(data, (int)dlen, hash);
+		unsigned char* str = (unsigned char*)key;
+		uint32_t len;
+		R(len);
+		rsaArguments.Modulus = gcnew array<unsigned char>(len);
+		pin_ptr<unsigned char> ma = &rsaArguments.Modulus[0];
+		memcpy(ma, str, len);
+		R(len);
+		rsaArguments.Exponent = gcnew array<unsigned char>(len);
+		pin_ptr<unsigned char> mb = &rsaArguments.Exponent[0];
+		memcpy(mb, str, len);
 
+		bool retval = RSA_verify(NID_sha256, hash, SHA256_DIGEST_LENGTH, signature, slen, msa);
+
+		RSA_free(msa);
+		return retval;
 	}
-	size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* signature) {
+	size_t OpenNet_CreateSignature(const unsigned char* data, size_t dlen, unsigned char* signature) {
 		RSASSA_PKCS1v15_SHA_Signer signer;
 		size_t mlen = signer.MaxSignatureLength();
 		bool rst = false;

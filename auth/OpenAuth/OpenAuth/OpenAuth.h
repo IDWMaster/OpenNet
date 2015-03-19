@@ -24,17 +24,17 @@ typedef struct {
 	size_t siglen;
 } OCertificate;
 #ifdef __cplusplus
-template<typename F, typename... args, typename R>
-static R unsafe_c_callback(void* thisptr,args... a) {
-    return (*((F*)thisptr))(a...);
+template<typename R, typename F, typename... args>
+static R unsafe_c_callback(void* thisptr, args... a) {
+	return (*((F*)thisptr))(a...);
 }
 
 
 
 template<typename F, typename... args, typename R>
-static void* C(const F& callback, R(*&fptr)(void*,args...)) {
-    fptr = unsafe_c_callback<F,args...>;
-    return (void*)&callback;
+static void* C(const F& callback, R(*&fptr)(void*, args...)) {
+	fptr = unsafe_c_callback<R, F, args...>;
+	return (void*)&callback;
 }
 extern "C" {
 #endif
