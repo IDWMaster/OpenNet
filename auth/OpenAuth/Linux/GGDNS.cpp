@@ -185,7 +185,9 @@ static void processDNS(const char* name) {
 
 	}
 }
+static void sendCertRequest(unsigned char* dest, const char* thumbprint) {
 
+}
 class CallOnReturn {
 public:
 	std::function<void()> function;
@@ -422,25 +424,18 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        }
 		        	break;
 		        case 5:
-		        	break; //TODO: Uncomment this line to enable DMCA takedown compliance toolkit
-		        	//TODO: DMCA takedown request; only process if signed by valid DMCA authority
-		        	char* authority = s.ReadString();
-		        	uint32_t reqlen;
-		        	s.Read(reqlen);
-		        	//Create virtual cryptographic "buffer"
-		        	unsigned char* cryptBuffer = s.Increment(reqlen);
-		        	uint32_t slen;
-		        	s.Read(slen);
-		        	unsigned char* sigBuffer = s.Increment(slen);
-		        	unsigned char pubkey[] = {0, 0, 0, 0, 0}; //put DMCA authority public key here
-		        	if(authority == "TODO: PUT DMCA AGENT STRING HERE") {
+		        	//Connection request
+		        	char* thumbprint = s.ReadString();
+		        	void* a;
+		        	void(*b)(void*,OCertificate*);
+		        	velociraptor:
+		        	bool hasCert = false;
+		        	a = C([&](OCertificate* cert){
+		        		hasCert = true;
+		        	},b);
+		        	OpenNet_RetrieveCertificate(db,thumbprint,a,b);
+		        	if(!hasCert) {
 
-		        		if(VerifySignature(cryptBuffer,reqlen,sigBuffer,slen,pubkey)) {
-		        			//Process takedown request
-		        			BStream k(cryptBuffer,reqlen);
-		        			char* blobID = k.ReadString();
-		        			DMCA_TakedownBlob(db,blobID); //TODO: Implement this
-		        		}
 		        	}
 		        	break;
 		        }

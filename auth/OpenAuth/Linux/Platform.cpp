@@ -9,9 +9,17 @@
 #include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/objects.h>
-
-
+#include <openssl/aes.h>
+#include <openssl/rand.h>
 static char filename[250];
+
+
+
+void gen_aes_key(unsigned char* key) {
+while(RAND_bytes(key,16) != 1) {}
+}
+
+
 const char* GetKeyDbFileName() {
   return "key.db";
 }
