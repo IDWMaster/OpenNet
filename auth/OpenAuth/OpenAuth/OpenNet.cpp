@@ -385,7 +385,32 @@ public:
 };
 extern "C" {
 
+bool OpenNet_HasPrivateKey(void* db,const char* thumbprint) {
+	KeyDatabase* realdb = (KeyDatabase*)db;
+	Certificate* cert = realdb->FindCertificate(thumbprint);
+	if(cert == 0) {
+		return false;
+	}
+	bool retval = cert->PrivateKey.size()>0;
+	delete cert;
+	return retval;
+}
 
+size_t OpenNet_RSA_Encrypt(void* db,const char* thumbprint, unsigned char* data, size_t len, unsigned char* output) {
+	KeyDatabase* realdb = (KeyDatabase*)db;
+	Certificate* cert = realdb->FindCertificate(thumbprint);
+	size_t retval = RSA_Encrypt(cert->PublicKey.data(),cert->PublicKey.size(),data,len,output);
+	delete cert;
+	return retval;
+}
+size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data, size_t len) {
+	KeyDatabase* realdb = (KeyDatabase*)db;
+	Certificate* cert = realdb->FindCertificate(thumbprint);
+	size_t retval = RSA_decrypt(cert->PrivateKey.data(),cert->PrivateKey.size(),data,len);
+	delete cert;
+	return retval;
+
+}
 
 	void OpenNet_OAuthAddReplicaServer(void* db, const char* object, const char* server) {
 		KeyDatabase* realdb = (KeyDatabase*)db;

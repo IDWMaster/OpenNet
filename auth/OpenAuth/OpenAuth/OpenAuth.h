@@ -61,6 +61,13 @@ extern "C" {
     void OpenNet_RetrieveDomainPtr(void* db, const char* objid, void* thisptr, void(*callback)(void*,NamedObject*));
     void OpenNet_GetMissingReplicas(void* db, void* thisptr, bool(*callback)(void*,const char*));
     void OpenNet_AddReplica(void* db, const char* blob, const unsigned char* id);
+    size_t RSA_Encrypt(unsigned char* key, size_t keylen, unsigned char* data, size_t dlen, unsigned char* output);
+    size_t RSA_decrypt(unsigned char* key, size_t keylen, unsigned char* data, size_t dlen);
+    void gen_aes_key(unsigned char* key);
+    size_t OpenNet_RSA_Encrypt(void* db,const char* thumbprint, unsigned char* data, size_t len, unsigned char* output);
+    size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data, size_t len);
+    bool OpenNet_HasPrivateKey(void* db,const char* thumbprint);
+
     extern size_t OpenNet_replicaCount;
 #ifdef __cplusplus
 }

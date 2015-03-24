@@ -15,6 +15,8 @@ static char filename[250];
 
 
 
+
+
 void gen_aes_key(unsigned char* key) {
 while(RAND_bytes(key,16) != 1) {}
 }
@@ -160,6 +162,46 @@ size_t CreateSignature(const unsigned char* data, size_t dlen, unsigned char* pr
 
     return siglen;
 }
+
+
+size_t RSA_Encrypt(unsigned char* key, size_t keylen, unsigned char* data, size_t dlen, unsigned char* output) {
+	RSA* msa = RSA_new();
+	unsigned char* str = (unsigned char*)key;
+	    uint32_t len;
+	    R(len);
+	    msa->n = RI;
+	    R(len);
+	    msa->e = RI;
+	    size_t retval = RSA_size(msa);
+
+	    if(output == 0) {
+	    	size_t retval = RSA_size(msa);
+	    	RSA_free(msa);
+	    	return retval;
+	    }
+	    RSA_public_encrypt(dlen,data,output,msa,RSA_PKCS1_PADDING);
+	    RSA_free(msa);
+
+	    return retval;
+}
+size_t RSA_decrypt(unsigned char* key, size_t keylen, unsigned char* data, size_t dlen) {
+	   RSA* msa = RSA_new();
+	   if(msa->n) {
+	       throw "down";
+	   }
+	   unsigned char* str = (unsigned char*)key;
+	   uint32_t len;
+	   R(len);
+	   msa->n = RI;
+	   R(len);
+	   msa->e = RI;
+	   R(len);
+	   msa->d = RI;
+	   return RSA_private_decrypt(dlen,data,data,msa,RSA_PKCS1_PADDING);
+
+
+}
+
 
 bool VerifySignature(unsigned char* data, size_t dlen, unsigned char* signature, size_t slen, unsigned char* key) {
     RSA* msa = RSA_new();

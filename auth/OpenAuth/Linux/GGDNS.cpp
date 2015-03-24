@@ -185,8 +185,18 @@ static void processDNS(const char* name) {
 
 	}
 }
-static void sendCertRequest(unsigned char* dest, const char* thumbprint) {
-
+static bool sendCertRequest(unsigned char* dest, const char* thumbprint) {
+	std::shared_ptr<WaitHandle> wh = std::make_shared<WaitHandle>();
+	callbacks_mtx.lock();
+	certRequests[thumbprint] = wh;
+	callbacks_mtx.unlock();
+	unsigned char* req = new unsigned char[1+strlen(thumbprint)+1];
+	*req = 2;
+	memcpy(req+1,thumbprint,strlen(thumbprint)+1);
+	GlobalGrid_Send(connectionmanager,dest,1,1,req,1+strlen(thumbprint)+1);
+	delete[] req;
+	wh->evt.wait();
+	return wh->success;
 }
 class CallOnReturn {
 public:
@@ -301,37 +311,10 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 
 
 	                    std::cerr<<"RECV: SIG CHECK ERR AUTH "<<obj.authority<<std::endl;
-		        		std::shared_ptr<WaitHandle> ccb = std::make_shared<WaitHandle>();
-
-		        		std::string auth = obj.authority;
-		        		std::string objname = name;
-	        			size_t len = 1+strlen(obj.authority)+1;
-	        			unsigned char* packet = (unsigned char*)alloca(len);
-	        			unsigned char* ptr = packet;
-	        			*ptr = 2;
-	        			ptr++;
-	        			memcpy(ptr,obj.authority,strlen(obj.authority)+1);
-	        			ptr+=strlen(obj.authority)+1;
-	        			std::cerr<<"Sent CERT request for "<<obj.authority<<std::endl;
-	        				GlobalGrid_Send(connectionmanager,(unsigned char*)src,1,1,packet,len);
-
-		        		std::shared_ptr<TimerEvent> timer = CreateTimer([=](){
-		        			ccb->evt.signal();
-		        		},timeoutValue);
-		        		ccb->evt.wait();
-		        		//TODO: Possible problem here if timer has already gone off.
-		        		CancelTimer(timer);
-		        		if(ccb->success) {
-		        			//Resend request if successful
-		        			SendQuery_Raw(objname.data());
-		        		}
-		        		std::cerr<<"Lock acquire\n";
-		        		callbacks_mtx.lock();
-
-		        		certRequests[obj.authority] = ccb;
-		        			callbacks_mtx.unlock();
-		        			std::cerr<<"Lock release\n";
-
+	                    bool success = sendCertRequest(src,obj.authority);
+	                    if(success) {
+	                    	SendQuery_Raw(name);
+	                    }
 		        	}
 		        }
 		        	break;
@@ -426,6 +409,10 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        case 5:
 		        	//Connection request
 		        	char* thumbprint = s.ReadString();
+		        	uint32_t dlen;
+		        	s.Read(dlen);
+		        	unsigned char* dataptr = s.Increment(dlen);
+
 		        	void* a;
 		        	void(*b)(void*,OCertificate*);
 		        	velociraptor:
@@ -435,7 +422,24 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	},b);
 		        	OpenNet_RetrieveCertificate(db,thumbprint,a,b);
 		        	if(!hasCert) {
-
+		        		bool success = sendCertRequest(src,thumbprint);
+		        		if(success) {
+		        			goto velociraptor;
+		        		}
+		        	}else {
+		        		//Verify data
+		        		bool valid = OpenNet_VerifySignature(db,thumbprint,dataptr,dlen,s.ptr,s.length);
+		        		if(valid) {
+		        			//Decrypt data (key)
+		        			BStream substream(dataptr,dlen);
+		        			char* auth = substream.ReadString();
+		        			if(OpenNet_HasPrivateKey(db,auth)) {
+		        				if(substream.length == 32) {
+		        					OpenNet_RSA_Decrypt(db,auth,substream.ptr,substream.length);
+		        					//TODO: We've received a session key, now what?
+		        				}
+		        			}
+		        		}
 		        	}
 		        	break;
 		        }
