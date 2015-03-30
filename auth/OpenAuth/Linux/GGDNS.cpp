@@ -53,15 +53,40 @@ public:
 	Event evt;
 	//Whether or not it was successful
 	bool success;
+	unsigned char* data;
 	WaitHandle() {
 		success = false;
+		data = 0;
+	}
+	~WaitHandle() {
+		if(data) {
+		delete[] data;
+		}
 	}
 };
+
+
+class Guid {
+public:
+	Guid() {
+
+	}
+	Guid(const unsigned char* v) {
+		memcpy(val,v,16);
+	}
+	unsigned char val[16];
+	bool operator<(const Guid& other) {
+		return uuid_compare(other.val,val)<0;
+	}
+};
+
 static std::mutex callbacks_mtx;
 //Resolver cache; used to map GUIDs to server identifiers
 static std::map<std::string,std::vector<GlobalGrid_Identifier>> resolverCache;
 static std::map<std::string,std::shared_ptr<WaitHandle>> objectRequests;
 static std::map<std::string,std::shared_ptr<WaitHandle>> certRequests;
+static std::map<Guid,std::shared_ptr<WaitHandle>> outstandingPings;
+
 static void* connectionmanager;
 static void* db;
 static void SendQuery_Raw(const char* name);
@@ -207,6 +232,14 @@ public:
 		function();
 	}
 };
+
+class AES_Key {
+public:
+	unsigned char key[16];
+};
+
+static std::map<std::string,AES_Key> keys;
+
 static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort, unsigned char* data_, size_t sz) {
     //Received a DNS request; process it
 	unsigned char* data = new unsigned char[sz];
@@ -436,11 +469,36 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			if(OpenNet_HasPrivateKey(db,auth)) {
 		        				if(substream.length == 32) {
 		        					OpenNet_RSA_Decrypt(db,auth,substream.ptr,substream.length);
-		        					//TODO: We've received a session key, now what?
+		        					callbacks_mtx.lock();
+		        					AES_Key key;
+		        					memcpy(key.key,substream.ptr,32);
+		        					keys[thumbprint] = key;
+		        					callbacks_mtx.unlock();
+
+		        					//TODO: Send response
+		        					unsigned char response[1];
+		        					response[0] = 6;
+		        					GlobalGrid_Send(connectionmanager,src,1,1,response,1);
 		        				}
 		        			}
 		        		}
 		        	}
+		        	break;
+		        case 6:
+		        {
+		        	//PING RESPONSE received
+		        	std::shared_ptr<WaitHandle> handle;
+		        	Guid id;
+		        	memcpy(id.val,s.Increment(16),16);
+		        	callbacks_mtx.lock();
+		        	if(outstandingPings.find(id) != outstandingPings.end()) {
+		        		handle = outstandingPings[id];
+		        		handle->evt.signal();
+		        		outstandingPings.erase(id);
+		        	}
+		        	callbacks_mtx.unlock();
+
+		        }
 		        	break;
 		        }
 		    }catch(const char* err) {
@@ -449,6 +507,103 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 	});
 
 }
+
+
+//Fast dot name resolution
+static std::map<std::string,Guid> dotnameLookup;
+
+template<typename K,typename T, typename Y>
+static void MapInsert(const K& key,T& value, Y& map) {
+	callbacks_mtx.lock();
+	if(map.find(key) != map.end()) {
+		value = map[key];
+	}else {
+		map[key] = value;
+	}
+	callbacks_mtx.unlock();
+
+}
+
+
+Guid ResolveDotName(const char* dotname, const char* localAuth) {
+	Guid dest;
+	bool found = false;
+	callbacks_mtx.lock();
+	if(dotnameLookup.find(dotname) != dotnameLookup.end()) {
+		found = true;
+		memcpy(dest.val,dotnameLookup[dotname].val,16);
+	}
+	callbacks_mtx.unlock();
+	if(found) {
+		GlobalGrid_Send(connectionmanager,dest.val,destPort,srcPort,packet,len);
+		return;
+	}
+unsigned char glist[1024];
+size_t gsize = 0;
+	std::string auth = DotQuery(dotname);
+	void* thisptr;
+	void(*cb)(void*,unsigned char*,size_t);
+	thisptr = C([&](unsigned char* list, size_t bytelen){
+		gsize = std::min(1024/16,bytelen/16)*16;
+		memcpy(glist,list,gsize);
+	},cb);
+	GGDNS_GetGuidListForObject(auth.data(),thisptr,cb);
+	std::string destauth;
+	void(*ca)(void*,NamedObject* obj);
+	thisptr = C([&](NamedObject* obj){
+		destauth = obj->authority;
+	},ca);
+	OpenNet_Retrieve(db,auth.data(),thisptr,ca);
+
+
+	//Packet encoding == OPCODE 5, source authority (string), data length, data, signature
+	//Data encoding == Destination Authority (string), 32-byte AES key encrypted with remote authority
+
+
+	unsigned char key[32];
+	gen_aes_key(key);
+	unsigned char data[1024];
+	size_t dlen = destauth.size()+1;
+	memcpy(data,destauth.data(),dlen);
+	size_t enclen = OpenNet_RSA_Encrypt(db,destauth.data(),key,32,data+dlen);
+	dlen+=enclen;
+
+	unsigned char packet[2048];
+	packet[0] = 5;
+	memcpy(packet+1,localAuth,strlen(localAuth)+1);
+	memcpy(packet+1+strlen(localAuth)+1,&dlen,4);
+	memcpy(packet+1+strlen(localAuth)+1+4,data,dlen);
+
+	size_t siglen = 0;
+	void* a;
+	void(*b)(void*,unsigned char*,size_t);
+	a = C([&](unsigned char* ddata, size_t len){
+		siglen = len;
+		memcpy(packet+1+strlen(localAuth)+1+4+dlen,ddata,len);
+
+	},b);
+	OpenNet_SignData(db,localAuth,data,dlen,a,b);
+
+
+	size_t packlen = packet+1+strlen(localAuth)+1+4+dlen+siglen;
+
+	std::shared_ptr<WaitHandle> wh = std::make_shared<WaitHandle>();
+	for(size_t i = 0;i<gsize;i+=16) {
+		MapInsert(glist+i,wh,dotnameLookup);
+		GlobalGrid_Send(connectionmanager,glist+i,1,1,packet,packlen);
+	}
+	wh->evt.wait();
+
+}
+
+
+
+void NegotiateKey(const unsigned char* id) {
+	//TODO: Complete
+
+}
+
+
 static void SendQuery_Raw(const char* name) {
 	//OPCODE, name
 
