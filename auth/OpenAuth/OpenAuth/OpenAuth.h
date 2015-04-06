@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
+#include <vector>
+#include "LightThread.h"
 typedef struct {
     //The authority who signed the blob
     char* authority;

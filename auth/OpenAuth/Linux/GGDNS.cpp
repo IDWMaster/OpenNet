@@ -1,12 +1,11 @@
 #define charmander char mander
 #include <GlobalGrid.h>
 #include <InternetProtocol.h>
-#include <OpenAuth.h>
+#include "OpenAuth.h"
 #include <mutex>
 #include <string>
 #include "LightThread.h"
 #include <uuid/uuid.h>
-#include "GGDNS.h"
 #include <memory>
 static size_t timeoutValue = 5000;
 static void sendObjectTo(const char* name, unsigned char* dest);
@@ -75,7 +74,7 @@ public:
 		memcpy(val,v,16);
 	}
 	unsigned char val[16];
-	bool operator<(const Guid& other) {
+	bool operator<(const Guid& other) const {
 		return uuid_compare(other.val,val)<0;
 	}
 };
@@ -344,7 +343,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 
 
 	                    std::cerr<<"RECV: SIG CHECK ERR AUTH "<<obj.authority<<std::endl;
-	                    bool success = sendCertRequest(src,obj.authority);
+	                    bool success = sendCertRequest((unsigned char*)src,obj.authority);
 	                    if(success) {
 	                    	SendQuery_Raw(name);
 	                    }
@@ -440,6 +439,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        }
 		        	break;
 		        case 5:
+		        {
 		        	//Connection request
 		        	char* thumbprint = s.ReadString();
 		        	uint32_t dlen;
@@ -455,7 +455,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	},b);
 		        	OpenNet_RetrieveCertificate(db,thumbprint,a,b);
 		        	if(!hasCert) {
-		        		bool success = sendCertRequest(src,thumbprint);
+		        		bool success = sendCertRequest((unsigned char*)src,thumbprint);
 		        		if(success) {
 		        			goto velociraptor;
 		        		}
@@ -478,11 +478,12 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        					//TODO: Send response
 		        					unsigned char response[1];
 		        					response[0] = 6;
-		        					GlobalGrid_Send(connectionmanager,src,1,1,response,1);
+		        					GlobalGrid_Send(connectionmanager,(unsigned char*)src,1,1,response,1);
 		        				}
 		        			}
 		        		}
 		        	}
+		        }
 		        	break;
 		        case 6:
 		        {
@@ -493,6 +494,8 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	callbacks_mtx.lock();
 		        	if(outstandingPings.find(id) != outstandingPings.end()) {
 		        		handle = outstandingPings[id];
+		        		handle->data = new unsigned char[16];
+		        		memcpy(handle->data,id.val,16);
 		        		handle->evt.signal();
 		        		outstandingPings.erase(id);
 		        	}
@@ -544,7 +547,7 @@ size_t gsize = 0;
 	void* thisptr;
 	void(*cb)(void*,unsigned char*,size_t);
 	thisptr = C([&](unsigned char* list, size_t bytelen){
-		gsize = std::min(1024/16,bytelen/16)*16;
+		gsize = std::min((size_t)1024/16,bytelen/16)*16;
 		memcpy(glist,list,gsize);
 	},cb);
 	GGDNS_GetGuidListForObject(auth.data(),thisptr,cb);
@@ -593,7 +596,9 @@ size_t gsize = 0;
 		GlobalGrid_Send(connectionmanager,glist+i,1,1,packet,packlen);
 	}
 	wh->evt.wait();
+	if(wh->evt->data) {
 
+	}
 }
 
 

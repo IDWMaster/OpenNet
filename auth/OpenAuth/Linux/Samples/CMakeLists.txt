@@ -1,5 +1,5 @@
 option (PROPRIETARY_GG "Use proprietary GlobalGrid distribution?" OFF)
-add_executable(distauth GGDNS.cpp GlobalGrid.cpp)
+add_executable(distauth GlobalGrid.cpp)
 if(PROPRIETARY_GG)
 set (EXTRA_LIBS ${EXTRA_LIBS} GlobalGrid)
 else(PROPRIETARY_GG)
