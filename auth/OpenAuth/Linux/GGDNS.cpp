@@ -538,8 +538,7 @@ Guid ResolveDotName(const char* dotname, const char* localAuth) {
 	}
 	callbacks_mtx.unlock();
 	if(found) {
-		GlobalGrid_Send(connectionmanager,dest.val,destPort,srcPort,packet,len);
-		return;
+		return dest;
 	}
 unsigned char glist[1024];
 size_t gsize = 0;
@@ -588,15 +587,16 @@ size_t gsize = 0;
 	OpenNet_SignData(db,localAuth,data,dlen,a,b);
 
 
-	size_t packlen = packet+1+strlen(localAuth)+1+4+dlen+siglen;
+	size_t packlen = 1+strlen(localAuth)+1+4+dlen+siglen;
 
 	std::shared_ptr<WaitHandle> wh = std::make_shared<WaitHandle>();
 	for(size_t i = 0;i<gsize;i+=16) {
-		MapInsert(glist+i,wh,dotnameLookup);
+
+		MapInsert(glist+i,wh,outstandingPings);
 		GlobalGrid_Send(connectionmanager,glist+i,1,1,packet,packlen);
 	}
 	wh->evt.wait();
-	if(wh->evt->data) {
+	if(wh->data) {
 
 	}
 }
@@ -748,7 +748,7 @@ static void replicate() {
 		GlobalGrid_Identifier* list;
 		size_t glen = GlobalGrid_GetPeerList(connectionmanager,&list);
 		for(size_t i = 0;i<glen;i++) {
-			processRequest(0,(unsigned char*)(list+i),1,izard,reqsz);
+			sendObjectTo(stackstring.data(),(unsigned char*)list[i].value);
 		}
 		GlobalGrid_FreePeerList(list);
 
