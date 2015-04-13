@@ -37,10 +37,10 @@ std::shared_ptr<GlobalGrid::P2PConnectionManager> mngr = std::make_shared<Global
 GlobalGrid::InternetProtocol ip(5809,mngr);
 mngr->RegisterProtocol(&ip);
 GGDNS_Init(mngr->nativePtr);
-
+GGDNS_SetTimeoutInterval(2000);
 
 if(argc == 1) {
-	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\nrequestDomain -- requests a domain. The domain must be in the format domainName.parent, where domainName is the child domain being requested, and parent is the pointer to the authoritative object to which the request is being made. Also requires a signing certificate to be specified.\nupdateHost -- Associates host information with the specified domain (requires a pointer to the domain as an argument)\ngetHost -- Retrieves a host record for a specified domain pointer.\n");
+	printf("HELP:\ndistauth enumPrivateKeys -- Enumerates private keys\ndistauth makeInternet privateKey -- Makes an Internet and digitally signs it with the specified private key\nsignRecord -- Digitally signs and imports a record piped from STDIN with the specified private key, and exports the signature to stdout.\nenumHosts -- Enumerates hosts for a given authoritative domain by referencing the nearest pointer. Returns a list of GUIDs\ngetDomainPtr -- Retrieves a domain pointer for a specified domain.\nrequestDomain -- requests a domain. The domain must be in the format domainName.parent, where domainName is the child domain being requested, and parent is the pointer to the authoritative object to which the request is being made. Also requires a signing certificate to be specified.\nupdateHost -- Associates host information with the specified domain (requires a pointer to the domain as an argument)\ngetHost -- Retrieves a host record for a specified domain pointer.\nresolveDomain -- Resolves a domain using a specified key.\n");
 
 }else {
 	if(argv[1] == std::string("enumPrivateKeys")) {
@@ -145,6 +145,21 @@ if(argc == 1) {
 										write(STDIN_FILENO,data,len);
 									},cb);
 									GGDNS_GetGuidListForObject(argv[2],thisptr,cb);
+								}else {
+									if(argv[1] == std::string("resolveDomain")) {
+										sleep(2);
+										unsigned char output[16];
+										char mkr[256];
+										memset(mkr,0,256);
+										printf("Resolving domain\n");
+										if(GGDNS_Resolve(argv[2],argv[3],output)) {
+											uuid_unparse(output,mkr);
+											printf("Found domain: %s\n",mkr);
+										}else {
+											printf("Epic fail.\n");
+										}
+
+									}
 								}
 							}
 						}

@@ -4,9 +4,22 @@
 #include "OpenAuth.h"
 #include <mutex>
 #include <string>
-#include "LightThread.h"
+#include <LightThread.h>
 #include <uuid/uuid.h>
 #include <memory>
+
+class CallOnReturn {
+public:
+	std::function<void()> function;
+	CallOnReturn(const std::function<void()>& functor):function(functor) {
+	}
+	~CallOnReturn() {
+		function();
+	}
+};
+
+
+
 static size_t timeoutValue = 5000;
 static void sendObjectTo(const char* name, unsigned char* dest);
 class BStream {
@@ -57,6 +70,21 @@ public:
 		success = false;
 		data = 0;
 	}
+	bool wait(size_t timeout) {
+
+		//TODO: Confirmed: Problem IS with timer library. BUT what can we possibly
+		//do about it? OS timers don't seem to work either (no wonder nobody uses them).
+		auto timer = CreateTimer([=](){
+			evt.signal();
+		},timeout);
+		evt.wait();
+		CancelTimer(timer);
+		return success;
+	}
+	bool wait() {
+		evt.wait();
+		return success;
+	}
 	~WaitHandle() {
 		if(data) {
 		delete[] data;
@@ -68,7 +96,7 @@ public:
 class Guid {
 public:
 	Guid() {
-
+		memset(val,0,16);
 	}
 	Guid(const unsigned char* v) {
 		memcpy(val,v,16);
@@ -219,18 +247,10 @@ static bool sendCertRequest(unsigned char* dest, const char* thumbprint) {
 	memcpy(req+1,thumbprint,strlen(thumbprint)+1);
 	GlobalGrid_Send(connectionmanager,dest,1,1,req,1+strlen(thumbprint)+1);
 	delete[] req;
-	wh->evt.wait();
+	wh->wait(timeoutValue);
 	return wh->success;
 }
-class CallOnReturn {
-public:
-	std::function<void()> function;
-	CallOnReturn(const std::function<void()>& functor):function(functor) {
-	}
-	~CallOnReturn() {
-		function();
-	}
-};
+
 
 class AES_Key {
 public:
@@ -260,7 +280,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        {
 		            char* name = s.ReadString();
 
-		            //GGDNS request entry
+		            //GGDNS request authoritative entry
 		            void(*callback)(void*,NamedObject*);
 		            void* thisptr = C([&](NamedObject* obj){
 		                    //Found it!
@@ -550,6 +570,9 @@ size_t gsize = 0;
 		memcpy(glist,list,gsize);
 	},cb);
 	GGDNS_GetGuidListForObject(auth.data(),thisptr,cb);
+	if(gsize == 0) {
+		return dest;
+	}
 	std::string destauth;
 	void(*ca)(void*,NamedObject* obj);
 	thisptr = C([&](NamedObject* obj){
@@ -595,17 +618,27 @@ size_t gsize = 0;
 		MapInsert(glist+i,wh,outstandingPings);
 		GlobalGrid_Send(connectionmanager,glist+i,1,1,packet,packlen);
 	}
-	wh->evt.wait();
+	wh->wait(timeoutValue);
 	if(wh->data) {
+		//WE HAVE GUID!!!!!
+		memcpy(dest.val,wh->data,16);
 
 	}
+	return dest;
+
 }
 
 
+extern "C" bool GGDNS_Resolve(const char* dotname, const char* localKey, unsigned char* output) {
+	Guid res = ResolveDotName(dotname,localKey);
 
-void NegotiateKey(const unsigned char* id) {
-	//TODO: Complete
-
+	unsigned char zero[16];
+	memset(zero,0,16);
+	if(memcmp(zero,res.val,16) == 0) {
+		return false;
+	}
+	memcpy(output,res.val,16);
+	return true;
 }
 
 
@@ -638,7 +671,7 @@ static void SendQuery(const char* name, const F& callback) {
 	callbacks_mtx.unlock();
 
     SendQuery_Raw(name);
-    cb->evt.wait();
+    cb->wait(timeoutValue);
     if(cb->success) {
     	void(*cb)(void*,NamedObject*);
     	void* thisptr = C([&](NamedObject* obj){

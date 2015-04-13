@@ -70,7 +70,7 @@ extern "C" {
     size_t OpenNet_RSA_Encrypt(void* db,const char* thumbprint, unsigned char* data, size_t len, unsigned char* output);
     size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data, size_t len);
     bool OpenNet_HasPrivateKey(void* db,const char* thumbprint);
-
+    bool GGDNS_Resolve(const char* dotname, const char* localKey, unsigned char* output);
     extern size_t OpenNet_replicaCount;
 #ifdef __cplusplus
 }
