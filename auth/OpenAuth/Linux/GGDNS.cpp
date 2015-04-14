@@ -728,6 +728,8 @@ static void sendObjectTo(const char* name, unsigned char* dest) {
 
 }
 static void replicate() {
+	//TODO: Complete replication process.
+	std::cerr<<"Replicating\n";
 	void* thisptr;
 	bool(*cb)(void*,const char*);
 	std::vector<std::string> toBeContinued;
