@@ -187,7 +187,7 @@ static std::string DotQuery(const char* query) {
 				//TODO: Take substring
 				str = str+offset+1;
 				found = true;
-				return std::string(str,offset);
+				return std::string(str-offset-1,offset);
 			}
 			offset++;
 		}
@@ -196,7 +196,8 @@ static std::string DotQuery(const char* query) {
 	std::vector<std::string> components;
 	bool found = true;
 	while(true) {
-		components.push_back(expect(query,'.',found));
+		std::string expected = expect(query,'.',found);
+		components.push_back(expected);
 		if(!found) {
 			break;
 		}
