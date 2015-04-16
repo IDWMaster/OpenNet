@@ -728,7 +728,6 @@ static void sendObjectTo(const char* name, unsigned char* dest) {
 
 }
 static void replicate() {
-	return;
 	//TODO: Complete replication process.
 	std::cerr<<"Replicating\n";
 	void* thisptr;
