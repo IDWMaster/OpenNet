@@ -1,0 +1,4 @@
+Priority TODO list:
+* Complete replication (entire database should replicate to a minimum number of replicas)
+* Ensure that queries against authoritative domain information works
+
