@@ -331,11 +331,14 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			oldauth = obj->authority;
 		        		}
 		        	};
-		        	if(objVersion <=oldVersion && replace) {
-			        	return;
-		        	}
+
 		        	void* tp = C(cvi,c);
 		        	OpenNet_Retrieve(db,name,tp,c);
+
+		        	if(objVersion <=oldVersion && replace) {
+		        				        	return;
+		        			        	}
+
 		        	if(obj.bloblen<4 || (oldauth != obj.authority && replace)) {
 		        	        		return;
 		        	        	}
