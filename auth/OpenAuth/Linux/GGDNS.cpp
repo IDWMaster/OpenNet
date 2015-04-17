@@ -344,7 +344,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	        	}
 		        	bool success = false;
 		        	if(replace) {
-		        		std::cerr<<"Update object with ver "<<objVersion<<"old = "<<oldVersion<<"\n";
 		        		success = OpenNet_UpdateObject(db,name,&obj);
 		        	}else {
 		        		success = OpenNet_AddObject(db,name,&obj);
@@ -366,7 +365,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			//Request a copy of the digital signature.
 
 
-	                    std::cerr<<"RECV: SIG CHECK ERR AUTH "<<obj.authority<<std::endl;
 	                    bool success = sendCertRequest((unsigned char*)src,obj.authority);
 	                    if(success) {
 	                    	SendQuery_Raw(name);
@@ -378,7 +376,6 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        {
 		        	//TODO: Process Received certificate request
 		        	const char* authority = s.ReadString();
-		        	std::cerr<<"Authority request for "<<authority<<std::endl;
 		        	void(*callback)(void* thisptr, OCertificate* cert);
 		        	thisptr = C([&](OCertificate* cert){
 		        		if(cert) {
