@@ -748,7 +748,7 @@ static void replicate() {
 		std::string parentDomain;
 		void* thisptr_;
 		void(*cb_)(void*,const char*,const char*);
-		thisptr = C([&](const char* name, const char* parentID){
+		thisptr_ = C([&](const char* name, const char* parentID){
 			if(parentID) {
 				parentDomain = parentID;
 			}
