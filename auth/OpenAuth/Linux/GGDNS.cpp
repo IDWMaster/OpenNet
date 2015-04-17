@@ -308,6 +308,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		            break;
 		        case 1:
 		        {
+		        	std::cerr<<"NamedObject received\n";
 		        	NamedObject obj;
 		        	obj.authority = s.ReadString();
 		        	const char* name = s.ReadString();
