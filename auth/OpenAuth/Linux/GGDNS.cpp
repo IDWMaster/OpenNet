@@ -331,10 +331,8 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        			oldauth = obj->authority;
 		        		}
 		        	};
-		        	if(objVersion <=oldVersion) {
-
-			        	std::cerr<<"NamedObject -- illegal version"<<oldVersion<<"\n";
-		        		return;
+		        	if(objVersion <=oldVersion && replace) {
+			        	return;
 		        	}
 		        	void* tp = C(cvi,c);
 		        	OpenNet_Retrieve(db,name,tp,c);
