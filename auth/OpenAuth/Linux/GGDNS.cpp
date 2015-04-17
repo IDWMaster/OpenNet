@@ -320,7 +320,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	obj.signature = s.Increment(val);
 		        	bool replace = false;
 		        	uint32_t objVersion = 0;
-		        	uint32_t oldVersion;
+		        	uint32_t oldVersion = 0;
 		        	memcpy(&oldVersion,obj.blob,4);
 		        	void(*c)(void*, NamedObject*);
 		        	std::string oldauth;
@@ -341,7 +341,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	        	}
 		        	bool success = false;
 		        	if(replace) {
-		        		std::cerr<<"Update object with ver "<<objVersion<<"\n";
+		        		std::cerr<<"Update object with ver "<<objVersion<<"old = "<<oldVersion<<"\n";
 		        		success = OpenNet_UpdateObject(db,name,&obj);
 		        	}else {
 		        		success = OpenNet_AddObject(db,name,&obj);
