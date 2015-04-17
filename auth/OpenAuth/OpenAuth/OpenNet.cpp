@@ -265,7 +265,7 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
         sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomain,&parsed);
-        sql = "INSERT OR IGNORE INTO Replicas VALUES (?1, ?2, ?3); UPDATE Replicas SET ServerID = ?2, replicaCount = ?3 WHERE ObjectName = ?1";
+        sql = "INSERT OR IGNORE INTO Replicas VALUES (?1, ?2, ?3);UPDATE Replicas SET ServerID = ?2, replicaCount = ?3 WHERE ObjectName = ?1";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addReplica,&parsed);
         sql = "DELETE FROM NamedObjects WHERE Name = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_takedownBlob,&parsed);
@@ -733,12 +733,14 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	if(hasValue) {
     		unsigned char* prev = (unsigned char*)sqlite3_column_blob(query,0);
     		size_t prevlen = sqlite3_column_bytes(query,0);
+    		if(prevlen>=16) {
     		for(size_t i = 0;i<prevlen;i+=16) {
     			if(memcmp(id,prev+i,16) == 0) {
     				//Invalid
     				sqlite3_reset(query);
     				return;
     			}
+    		}
     		}
     		newval = new unsigned char[prevlen+16];
     		newlen = prevlen+16;
@@ -749,13 +751,14 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     		newlen = 16;
     	}
     	sqlite3_reset(query);
-
     	query = keydb->command_addReplica;
     	//objname,servers,length (number of servers)
     	sqlite3_bind_text(query,1,blob,strlen(blob),0);
     	sqlite3_bind_blob(query,2,newval,newlen,0);
     	sqlite3_bind_int(query,3,newlen/16);
+    	printf("Adding replica\n");
     	while(sqlite3_step(query) !=SQLITE_DONE){};
+    	printf("Added replica\n");
     	sqlite3_reset(query);
     	delete[] newval;
 

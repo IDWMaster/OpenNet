@@ -336,6 +336,9 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	OpenNet_Retrieve(db,name,tp,c);
 
 		        	if(objVersion <=oldVersion && replace) {
+		        							if(objVersion == oldVersion && oldauth == obj.authority) {
+		        				        		OpenNet_AddReplica(db,name,src);
+		        							}
 		        				        	return;
 		        			        	}
 
@@ -722,7 +725,9 @@ static void sendObjectTo(const char* name, unsigned char* dest) {
 	unsigned char* msg = new unsigned char[len];
 	*msg = 0;
 	memcpy(msg+1,name,strlen(name));
+	//Spoof request from dest server
 	processRequest(0,dest,1,msg,len);
+	//Send request for object to remote server (to verify replication)
 	GlobalGrid_Send(connectionmanager,dest,1,1,msg,len);
 	delete[] msg;
 
