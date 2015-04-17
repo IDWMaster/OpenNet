@@ -319,7 +319,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	obj.siglen = val;
 		        	obj.signature = s.Increment(val);
 		        	bool replace = false;
-		        	uint32_t objVersion;
+		        	uint32_t objVersion = 0;
 		        	uint32_t oldVersion;
 		        	memcpy(&oldVersion,obj.blob,4);
 		        	void(*c)(void*, NamedObject*);
@@ -333,7 +333,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	};
 		        	if(objVersion <=oldVersion) {
 
-			        	std::cerr<<"NamedObject -- illegal version\n";
+			        	std::cerr<<"NamedObject -- illegal version"<<oldVersion<<"\n";
 		        		return;
 		        	}
 		        	void* tp = C(cvi,c);
