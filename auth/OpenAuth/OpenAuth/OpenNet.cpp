@@ -237,7 +237,7 @@ public:
         sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS DomainPointers (DomainID TEXT NOT NULL PRIMARY KEY, ObjectID TEXT NOT NULL)",0,0,&err);
 
         //Replica server list (per-object)
-        sqlite3_exec(db,"CREATE TABLE IF NOT EXISTS Replicas (ObjectName TEXT, ServerID TEXT, replicaCount INTEGER, PRIMARY KEY(ObjectName, ServerID))",0,0,&err);
+        sqlite3_exec(db,"CREATE TABLE IF NOT EXISTS Replicas (ObjectName TEXT NOT NULL PRIMARY KEY, ServerID TEXT, replicaCount INTEGER)",0,0,&err);
         std::string sql = "INSERT OR IGNORE INTO Certificates VALUES (?, ?, ?, ?)";
 		const char* parsed;
 		sqlite3_prepare(db, sql.data(), (int)sql.size(), &command_addcert, &parsed);
