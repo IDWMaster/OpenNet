@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <mutex>
 std::string string_to_hex(const unsigned char* input, size_t len)
 {
 	static const char* const lut = "0123456789ABCDEF";
@@ -103,6 +104,7 @@ public:
 };
 class KeyDatabase:public IDisposable {
 public:
+	std::recursive_mutex mtx;
 	sqlite3* db;
 	sqlite3_stmt* command_addcert;
 	sqlite3_stmt* command_addobject;
@@ -387,6 +389,7 @@ extern "C" {
 
 bool OpenNet_HasPrivateKey(void* db,const char* thumbprint) {
 	KeyDatabase* realdb = (KeyDatabase*)db;
+	std::unique_lock<std::recursive_mutex> l(realdb->mtx);
 	Certificate* cert = realdb->FindCertificate(thumbprint);
 	if(cert == 0) {
 		return false;
@@ -397,7 +400,10 @@ bool OpenNet_HasPrivateKey(void* db,const char* thumbprint) {
 }
 
 size_t OpenNet_RSA_Encrypt(void* db,const char* thumbprint, unsigned char* data, size_t len, unsigned char* output) {
+
 	KeyDatabase* realdb = (KeyDatabase*)db;
+
+	std::unique_lock<std::recursive_mutex> l(realdb->mtx);
 	Certificate* cert = realdb->FindCertificate(thumbprint);
 	size_t retval = RSA_Encrypt(cert->PublicKey.data(),cert->PublicKey.size(),data,len,output);
 	delete cert;
@@ -405,6 +411,8 @@ size_t OpenNet_RSA_Encrypt(void* db,const char* thumbprint, unsigned char* data,
 }
 size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data, size_t len) {
 	KeyDatabase* realdb = (KeyDatabase*)db;
+
+	std::unique_lock<std::recursive_mutex> l(realdb->mtx);
 	Certificate* cert = realdb->FindCertificate(thumbprint);
 	size_t retval = RSA_decrypt(cert->PrivateKey.data(),cert->PrivateKey.size(),data,len);
 	delete cert;
@@ -415,10 +423,14 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
 	void OpenNet_OAuthAddReplicaServer(void* db, const char* object, const char* server) {
 		KeyDatabase* realdb = (KeyDatabase*)db;
 
+		std::unique_lock<std::recursive_mutex> l(realdb->mtx);
+		//TODO: Finish
 	}
 
     void OpenNet_OAuthEnumPrivateKeys(void* db, void* thisptr, bool(*callback)(void* thisptr,const char* thumbprint)) {
         KeyDatabase* realdb = (KeyDatabase*)db;
+
+    	std::unique_lock<std::recursive_mutex> l(realdb->mtx);
         int status;
         while((status = sqlite3_step(realdb->command_getPrivateKeys)) != SQLITE_DONE) {
             if(status == SQLITE_ROW) {
@@ -432,6 +444,8 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_AddDomainPtr(void* db, const char* objid, const char* ptrObject) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	sqlite3_stmt* query = keydb->command_addDomainPtr;
     	sqlite3_bind_text(query,1,objid,strlen(objid),0);
     	sqlite3_bind_text(query,2,ptrObject,strlen(ptrObject),0);
@@ -441,6 +455,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_RetrieveDomainPtr(void* db, const char* objid, void* thisptr, void(*callback)(void*,NamedObject*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	sqlite3_stmt* query = keydb->command_retrieveDomainPtr;
     	int val;
     	std::string name;
@@ -458,6 +473,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_FindDomain(void* db, const char* domain, const char* parent, void* thisptr, void(*callback)(void*, const char*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	sqlite3_stmt* query = keydb->command_findDomain;
     	if(strlen(parent)) {
     	  	sqlite3_bind_text(query,2,parent,strlen(parent),0);
@@ -477,6 +493,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_FindReverseDomain(void* db, const char* objid, void* thisptr, void(*callback)(void*,const char*, const char*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	auto bot = keydb->command_findReverseDomain;
     	sqlite3_bind_text(bot,1,objid,strlen(objid),0);
     	int val;
@@ -490,6 +507,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
 
     void OpenNet_AddDomain(void* db, const char* name, const char* parent, const char* objid) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	auto bot = keydb->command_addDomain;
     	sqlite3_bind_text(bot,1,name,strlen(name),0);
     	if(parent) {
@@ -510,6 +528,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     //Finds the trust anchor for a given certificate; as well as an indication of the resolution status
     void OpenNet_ResolveChain(void* db, const char* thumbprint, void* thisptr, void(*callback)(void*, const char*, bool)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	std::string current = thumbprint;
     	while(true) {
 
@@ -535,6 +554,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_MakeObject(void* db, const char* name,  NamedObject* obj, bool update) {
         KeyDatabase* realdb = (KeyDatabase*)db;
+        std::unique_lock<std::recursive_mutex> l(realdb->mtx);
         int status;
         sqlite3_bind_text(realdb->command_findPrivateKey,1,obj->authority,strlen(obj->authority),0);
         while((status = sqlite3_step(realdb->command_findPrivateKey)) != SQLITE_DONE) {
@@ -574,16 +594,19 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
 
     bool OpenNet_AddObject(void* db, const char* name, const NamedObject* obj) {
         KeyDatabase* keydb = (KeyDatabase*)db;
+        std::unique_lock<std::recursive_mutex> l(keydb->mtx);
         return keydb->AddObject(*obj,name);
         
     }
     bool OpenNet_UpdateObject(void* db, const char* name, const NamedObject* obj) {
             KeyDatabase* keydb = (KeyDatabase*)db;
+            std::unique_lock<std::recursive_mutex> l(keydb->mtx);
             return keydb->AddObject(*obj,name,true);
 
     }
     void OpenNet_RetrieveCertificate(void* db, const char* thumbprint,  void* thisptr,  void(*callback)(void*,OCertificate*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	Certificate* cert = keydb->FindCertificate(thumbprint);
     	if(cert) {
     		OCertificate abi;
@@ -600,6 +623,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     bool OpenNet_VerifySignature(void* db, const char* authority, unsigned char* data, size_t sz, unsigned char* signature, size_t siglen) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	Certificate* cert = keydb->FindCertificate(authority);
     	if(cert) {
     		bool retval = VerifySignature(data,sz,signature,siglen,cert->PublicKey.data());
@@ -610,6 +634,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_SignData(void* db, const char* authority, unsigned char* data, size_t sz, void* thisptr, void(*callback)(void*,unsigned char*,size_t)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	Certificate* cert = keydb->FindCertificate(authority);
     	if(cert) {
     		std::vector<unsigned char> pkey = cert->PrivateKey;
@@ -632,6 +657,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	memcpy(cert.PublicKey.data(),abi->pubkey,abi->pubLen);
     	memcpy(cert.Signature.data(),abi->signature,abi->siglen);
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	bool priv;
     	if(isValidKey(abi->pubkey,abi->pubLen,&priv)) {
     		if(priv) {
@@ -652,21 +678,25 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void DMCA_TakedownBlob(void* db,const char* name) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	while(sqlite3_step(keydb->command_takedownBlob) != SQLITE_DONE) {}
     	sqlite3_reset(keydb->command_takedownBlob);
     }
     void OpenNet_Retrieve(void* db, const char* name, void* thisptr, void(*callback)(void *, NamedObject *)) {
         KeyDatabase* keydb = (KeyDatabase*)db;
+        std::unique_lock<std::recursive_mutex> l(keydb->mtx);
         keydb->RetrieveObject(name,thisptr,callback);
     }
     void OpenNet_BeginTransaction(void* db) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	char* err;
     	sqlite3_exec(keydb->db, "BEGIN TRANSACTION",0,0,&err);
 
     }
     void OpenNet_EndTransaction(void* db) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	char* err;
     	sqlite3_exec(keydb->db, "COMMIT TRANSACTION",0,0,&err);
 
@@ -674,6 +704,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
 
     void OpenNet_GetMissingReplicas(void* db, void* thisptr, bool(*callback)(void*,const char*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	sqlite3_stmt* apocalypse = keydb->command_findMissingReplicas;
     	sqlite3_bind_int(apocalypse,1,(int)OpenNet_replicaCount);
     	while(sqlite3_step(apocalypse) != SQLITE_DONE) {
@@ -685,6 +716,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     }
     void OpenNet_AddReplica(void* db, const char* blob, const unsigned char* id) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	sqlite3_stmt* query = keydb->command_findReplicas;
     	sqlite3_bind_text(query,1,blob,strlen(blob),0);
     	int val;
