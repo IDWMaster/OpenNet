@@ -341,6 +341,7 @@ static void processRequest(void* thisptr_, unsigned char* src_, int32_t srcPort,
 		        	        	}
 		        	bool success = false;
 		        	if(replace) {
+		        		std::cerr<<"Update object\n";
 		        		success = OpenNet_UpdateObject(db,name,&obj);
 		        	}else {
 		        		success = OpenNet_AddObject(db,name,&obj);
