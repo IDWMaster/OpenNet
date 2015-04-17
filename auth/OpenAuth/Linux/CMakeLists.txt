@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 project(OAuth)
 add_library(OAuth SHARED sqlite3.c Platform.cpp OpenNet.cpp GGDNS.cpp)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g")
 add_subdirectory(Samples)
 target_link_libraries(OAuth crypto pthread dl)
