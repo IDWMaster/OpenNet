@@ -1,4 +1,5 @@
 #define charmander char mander
+#define charizard char* izard
 #include <GlobalGrid.h>
 #include <InternetProtocol.h>
 #include "OpenAuth.h"
@@ -26,9 +27,11 @@ class BStream {
 public:
     unsigned char* ptr;
     size_t length;
+    size_t(*reqCallback)(void*,unsigned char*,size_t);
     BStream(unsigned char* buffer, size_t sz) {
         this->ptr = buffer;
         this->length = sz;
+        this->reqCallback = 0;
     }
     unsigned char* Increment(size_t sz) {
     	unsigned char* retval = ptr;
@@ -106,6 +109,55 @@ public:
 		return uuid_compare(other.val,val)<0;
 	}
 };
+
+
+class FileStream {
+public:
+	size_t(*callback)(void*,unsigned char*,size_t);
+	void* thisptr;
+	unsigned char buffer[1024];
+	size_t position;
+	size_t len;
+	FileStream(size_t(*callback)(void*,unsigned char*,size_t),void* thisptr) {
+		this->callback = callback;
+		this->thisptr = thisptr;
+		this->position = 0;
+		this->len = 0;
+
+	}
+	void Fetch() {
+		size_t len = callback(thisptr,buffer,1024);
+		this->len = len;
+		this->position = 0;
+		if(len == 0) {
+			throw "down";
+		}
+	}
+
+	void Read(unsigned char* buffer, size_t sz) {
+		while(sz>0) {
+			m:
+			size_t avail = std::min(this->position-this->len,sz);
+			if(avail == 0) {
+				Fetch();
+				goto m;
+			}
+			memcpy(buffer,this->buffer+position,avail);
+			sz-=avail;
+			this->position+=avail;
+		}
+
+	}
+	template<typename T>
+	void Read(T& obj) {
+		Read(&obj,sizeof(obj));
+	}
+	~FileStream() {
+
+	}
+};
+
+
 
 static std::mutex callbacks_mtx;
 //Resolver cache; used to map GUIDs to server identifiers
@@ -990,6 +1042,66 @@ void GGDNS_MakeObject(const char* name, NamedObject* object, void* thisptr,  voi
     *object = ival;
     delete[] data;
 }
+
+void GGDNS_Backup(void* thisptr,void(*writeDgate)(void*,unsigned char*,size_t)) {
+	bool(*a)(void*,const char*);
+	std::vector<std::string> auths;
+	void* b = C([&](const char* auth){
+		auths.push_back(auth);
+		return true;
+	},a);
+	OpenNet_EnumCertificates(db,b,a);
+	uint32_t len = auths.size();
+	writeDgate(thisptr,&len,4);
+	for(auto i = auths.begin();i!= auths.end();i++) {
+		std::string val = *i;
+		OpenNet_ExportKey(db,val.data(),thisptr,writeDgate);
+	}
+	void* c;
+	bool(*d)(void*,const char*,NamedObject*);
+	c = C([&](const char* name, NamedObject* obj){
+		writeDgate(thisptr,name,strlen(name)+1);
+		writeDgate(thisptr,obj->authority,strlen(obj->authority)+1);
+		writeDgate(thisptr,&obj->bloblen,4);
+		writeDgate(thisptr,obj->blob,obj->bloblen);
+		writeDgate(thisptr,&obj->siglen,4);
+		writeDgate(thisptr,obj->signature,obj->siglen);
+	},d);
+	OpenNet_EnumNamedObjects(db,c,d);
+	unsigned char zero = 0;
+	writeDgate(thisptr,&zero,1);
+}
+
+void GGDNS_RestoreBackup(unsigned char* bytes, size_t sz) {
+	BStream str(bytes,sz);
+	uint32_t keys;
+	str.Read(keys);
+	//Import certificates
+
+	for(size_t i = 0;i<keys;i++) {
+		str.Increment(OpenNet_ImportKey(db,bytes));
+	}
+
+	//Import NamedObjects
+	charizard;
+	while(true) {
+		izard = str.ReadString();
+		if(strlen(izard) == 0) {
+			break;
+		}
+		NamedObject obj;
+		obj.authority = str.ReadString();
+		str.Read(keys);
+		obj.bloblen = keys;
+		obj.blob = str.Increment(obj.bloblen);
+		str.Read(keys);
+		obj.siglen = keys;
+		obj.signature = str.Increment(obj.siglen);
+
+	}
+
+}
+
 
 void GGDNS_RunQuery(const char* name,void* thisptr, void(*callback)(void*,NamedObject*)) {
     RunQuery(name,[=](NamedObject* obj){

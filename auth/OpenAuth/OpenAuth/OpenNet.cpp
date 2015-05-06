@@ -125,6 +125,7 @@ public:
     sqlite3_stmt* command_addDomainPtr;
     sqlite3_stmt* command_findReplicas;
     sqlite3_stmt* command_findMissingReplicas;
+    sqlite3_stmt* command_enumObjects;
     void EnumerateCertificates(void* thisptr,bool(*callback)(void*,const char*)) {
         int status;
         while ((status = sqlite3_step(command_enumerateCertificates)) != SQLITE_DONE) {
@@ -265,7 +266,7 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReverseDomain,&parsed);
         sql = "INSERT OR IGNORE INTO Domains VALUES (?, ?, ?)";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addDomain,&parsed);
-        sql = "INSERT OR IGNORE INTO Replicas VALUES (?1, ?2, ?3);UPDATE Replicas SET ServerID = ?2, replicaCount = ?3 WHERE ObjectName = ?1";
+        sql = "INSERT OR REPLACE INTO Replicas VALUES (?1, ?2, ?3);";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_addReplica,&parsed);
         sql = "DELETE FROM NamedObjects WHERE Name = ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_takedownBlob,&parsed);
@@ -277,6 +278,8 @@ public:
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findReplicas,&parsed);
         sql = "SELECT ObjectName FROM Replicas WHERE ReplicaCount < ?";
         sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_findMissingReplicas,&parsed);
+        sql = "SELECT * FROM NamedObjects";
+        sqlite3_prepare(db,sql.data(),(int)sql.size(),&command_enumObjects,&parsed);
 
         int status = 0;
         bool hasKey = false;
@@ -382,6 +385,7 @@ public:
         sqlite3_finalize(command_findRootDomain);
         sqlite3_finalize(command_findMissingReplicas);
         sqlite3_finalize(command_findReplicas);
+        sqlite3_finalize(command_enumObjects);
 		sqlite3_close(db);
 	}
 };
@@ -441,6 +445,11 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
         }
         sqlite3_reset(realdb->command_getPrivateKeys);
 
+    }
+    void OpenNet_EnumCertificates(void* db, void* thisptr, bool(*callback)(void*,const char*)) {
+    	KeyDatabase* realdb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(realdb->mtx);
+    	realdb->EnumerateCertificates(thisptr,callback);
     }
     void OpenNet_AddDomainPtr(void* db, const char* objid, const char* ptrObject) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
@@ -714,6 +723,60 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	}
     	sqlite3_reset(apocalypse);
     }
+    //Export a private key
+    void OpenNet_ExportKey(void* db, const char* key,void* thisptr,void(*callback)(void*,unsigned char*,size_t)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
+    	Certificate* cert = keydb->FindCertificate(key);
+    	unsigned char* ms = new unsigned char[4+cert->PublicKey.size()+4+cert->PrivateKey.size()];
+    	uint32_t len = (uint32_t)cert->PublicKey.size();
+    	memcpy(ms,&len,4);
+    	memcpy(ms+4,cert->PublicKey.data(),cert->PublicKey.size());
+    	len = (uint32_t)cert->PrivateKey.size();
+    	memcpy(ms+4+cert->PublicKey.size(),&len,4);
+    	memcpy(ms+4+cert->PublicKey.size()+4,cert->PrivateKey.data(),len);
+    	callback(thisptr,ms,4+cert->PublicKey.size()+4+cert->PrivateKey.size());
+    	delete[] ms;
+    	delete cert;
+    }
+    size_t OpenNet_ImportKey(void* db, const unsigned char* blob) {
+    	size_t orig = (size_t)blob;
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
+    	Certificate cert;
+    	uint32_t sz = 0;
+    	memcpy(&sz,blob,4);
+    	cert.PublicKey.resize(sz);
+    	blob+=4;
+    	memcpy(cert.PublicKey.data(),blob,sz);
+    	blob+=sz;
+    	memcpy(&sz,blob,4);
+    	blob+=4;
+    	cert.PrivateKey.resize(sz);
+    	memcpy(cert.PrivateKey.data(),blob,sz);
+    	keydb->AddCertificate(&cert);
+    	return (size_t)blob-orig;
+    }
+    void OpenNet_EnumNamedObjects(void* db,void* thisptr, bool(*callback)(void*,const char*,NamedObject*)) {
+    	KeyDatabase* keydb = (KeyDatabase*)db;
+    	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
+    	while(sqlite3_step(keydb->command_enumObjects) != SQLITE_DONE) {
+    		NamedObject obj;
+    		const char* name = sqlite3_column_text(keydb->command_enumObjects,1);
+    		obj.authority = sqlite3_column_text(keydb->command_enumObjects,2);
+    		obj.signature = sqlite3_column_blob(keydb->command_enumObjects,3);
+    		obj.siglen = sqlite3_column_bytes(keydb->command_enumObjects,3);
+    		obj.blob = sqlite3_column_blob(keydb->command_enumObjects,3);
+    		obj.bloblen = sqlite3_column_bytes(keydb->command_enumObjects,3);
+    		if(!callback(thisptr,name,&obj)) {
+    			break;
+    		}
+    	}
+    	sqlite3_reset(keydb->command_enumObjects);
+
+    }
+
+
     void OpenNet_AddReplica(void* db, const char* blob, const unsigned char* id) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
     	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
@@ -756,7 +819,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	sqlite3_bind_text(query,1,blob,strlen(blob),0);
     	sqlite3_bind_blob(query,2,newval,newlen,0);
     	sqlite3_bind_int(query,3,newlen/16);
-    	printf("Adding replica\n");
+    	printf("Adding replica, count = %i\n",(int)newlen/16);
     	while(sqlite3_step(query) !=SQLITE_DONE){};
     	printf("Added replica\n");
     	sqlite3_reset(query);
