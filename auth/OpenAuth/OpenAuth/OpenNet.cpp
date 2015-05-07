@@ -762,11 +762,11 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
     	while(sqlite3_step(keydb->command_enumObjects) != SQLITE_DONE) {
     		NamedObject obj;
-    		const char* name = sqlite3_column_text(keydb->command_enumObjects,1);
-    		obj.authority = sqlite3_column_text(keydb->command_enumObjects,2);
-    		obj.signature = sqlite3_column_blob(keydb->command_enumObjects,3);
+    		const char* name = (char*)sqlite3_column_text(keydb->command_enumObjects,1);
+    		obj.authority = (char*)sqlite3_column_text(keydb->command_enumObjects,2);
+    		obj.signature = (unsigned char*)sqlite3_column_blob(keydb->command_enumObjects,3);
     		obj.siglen = sqlite3_column_bytes(keydb->command_enumObjects,3);
-    		obj.blob = sqlite3_column_blob(keydb->command_enumObjects,3);
+    		obj.blob = (unsigned char*)sqlite3_column_blob(keydb->command_enumObjects,3);
     		obj.bloblen = sqlite3_column_bytes(keydb->command_enumObjects,3);
     		if(!callback(thisptr,name,&obj)) {
     			break;

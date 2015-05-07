@@ -1052,7 +1052,7 @@ void GGDNS_Backup(void* thisptr,void(*writeDgate)(void*,unsigned char*,size_t)) 
 	},a);
 	OpenNet_EnumCertificates(db,b,a);
 	uint32_t len = auths.size();
-	writeDgate(thisptr,&len,4);
+	writeDgate(thisptr,(unsigned char*)&len,4);
 	for(auto i = auths.begin();i!= auths.end();i++) {
 		std::string val = *i;
 		OpenNet_ExportKey(db,val.data(),thisptr,writeDgate);
@@ -1060,12 +1060,13 @@ void GGDNS_Backup(void* thisptr,void(*writeDgate)(void*,unsigned char*,size_t)) 
 	void* c;
 	bool(*d)(void*,const char*,NamedObject*);
 	c = C([&](const char* name, NamedObject* obj){
-		writeDgate(thisptr,name,strlen(name)+1);
-		writeDgate(thisptr,obj->authority,strlen(obj->authority)+1);
-		writeDgate(thisptr,&obj->bloblen,4);
-		writeDgate(thisptr,obj->blob,obj->bloblen);
-		writeDgate(thisptr,&obj->siglen,4);
-		writeDgate(thisptr,obj->signature,obj->siglen);
+		writeDgate(thisptr,(unsigned char*)name,strlen(name)+1);
+		writeDgate(thisptr,(unsigned char*)obj->authority,strlen(obj->authority)+1);
+		writeDgate(thisptr,(unsigned char*)&obj->bloblen,4);
+		writeDgate(thisptr,(unsigned char*)obj->blob,obj->bloblen);
+		writeDgate(thisptr,(unsigned char*)&obj->siglen,4);
+		writeDgate(thisptr,(unsigned char*)obj->signature,obj->siglen);
+		return true;
 	},d);
 	OpenNet_EnumNamedObjects(db,c,d);
 	unsigned char zero = 0;
@@ -1082,6 +1083,8 @@ void GGDNS_RestoreBackup(unsigned char* bytes, size_t sz) {
 		str.Increment(OpenNet_ImportKey(db,bytes));
 	}
 
+
+
 	//Import NamedObjects
 	charizard;
 	while(true) {
@@ -1097,7 +1100,8 @@ void GGDNS_RestoreBackup(unsigned char* bytes, size_t sz) {
 		str.Read(keys);
 		obj.siglen = keys;
 		obj.signature = str.Increment(obj.siglen);
-
+		OpenNet_AddObject(db,izard,&obj);
+		processDNS(izard);
 	}
 
 }

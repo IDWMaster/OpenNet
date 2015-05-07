@@ -72,9 +72,11 @@ extern "C" {
     bool OpenNet_HasPrivateKey(void* db,const char* thumbprint);
     bool GGDNS_Resolve(const char* dotname, const char* localKey, unsigned char* output);
     void OpenNet_ExportKey(void* db, const char* key,void* thisptr,void(*callback)(void*,unsigned char*,size_t));
-    void OpenNet_ImportKey(void* db, const unsigned char* blob);
+    size_t OpenNet_ImportKey(void* db, const unsigned char* blob);
     void OpenNet_EnumNamedObjects(void* db,void* thisptr, bool(*callback)(void*,const char*,NamedObject*));
     void OpenNet_EnumCertificates(void* db, void* thisptr, bool(*callback)(void*,const char*));
+    void GGDNS_Backup(void* thisptr,void(*writeDgate)(void*,unsigned char*,size_t));
+    void GGDNS_RestoreBackup(unsigned char* bytes, size_t sz);
     extern size_t OpenNet_replicaCount;
 #ifdef __cplusplus
 }

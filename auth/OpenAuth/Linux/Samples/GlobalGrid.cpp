@@ -67,7 +67,7 @@ if(argc == 1) {
 				GGDNS_MakeDomain(out,"",argv[2],thisptr,cb);
 				//printf("%s\n",out);
 			}else {
-				printf("Invalid number of arguments. Expected 2 (makeInternet and private key)\n");
+				printf("Invalid number of arguments. Expected 2 (makeInternet and private key)\nbackup -- Backs up, because SHE'S GONNA BLOW!!!!\nRestore -- Picks up the mess caused by the previous explosion.\n");
 			}
 		}else {
 			if(argv[1] == std::string("signRecord")) {
@@ -158,7 +158,21 @@ if(argc == 1) {
 										}else {
 											printf("Epic fail.\n");
 										}
+									}else {
+										if(argv[1] == std::string("backup")) {
+											void* a;
+											void(*b)(void*,unsigned char*,size_t);
 
+											a = C([&](unsigned char* data, size_t len){
+												write(STDOUT_FILENO,data,len);
+											},b);
+											GGDNS_Backup(a,b);
+										}else {
+											if(argv[1] == std::string("restore")) {
+												//TODO: Read in file
+
+											}
+										}
 									}
 								}
 							}
