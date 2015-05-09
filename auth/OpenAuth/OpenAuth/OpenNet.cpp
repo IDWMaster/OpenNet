@@ -526,7 +526,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	}
     	sqlite3_bind_text(bot,3,objid,strlen(objid),0);
     	while(sqlite3_step(bot) != SQLITE_DONE){};
-
+    	sqlite3_reset(bot);
     }
     void* OpenNet_OAuthInitialize() {
 		return new KeyDatabase();
@@ -754,22 +754,26 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	blob+=4;
     	cert.PrivateKey.resize(sz);
     	memcpy(cert.PrivateKey.data(),blob,sz);
+    	blob+=sz;
     	keydb->AddCertificate(&cert);
     	return (size_t)blob-orig;
     }
     void OpenNet_EnumNamedObjects(void* db,void* thisptr, bool(*callback)(void*,const char*,NamedObject*)) {
     	KeyDatabase* keydb = (KeyDatabase*)db;
     	std::unique_lock<std::recursive_mutex> l(keydb->mtx);
-    	while(sqlite3_step(keydb->command_enumObjects) != SQLITE_DONE) {
+    	int val;
+    	while((val = sqlite3_step(keydb->command_enumObjects)) != SQLITE_DONE) {
+    		if(val == SQLITE_ROW) {
     		NamedObject obj;
-    		const char* name = (char*)sqlite3_column_text(keydb->command_enumObjects,1);
-    		obj.authority = (char*)sqlite3_column_text(keydb->command_enumObjects,2);
-    		obj.signature = (unsigned char*)sqlite3_column_blob(keydb->command_enumObjects,3);
-    		obj.siglen = sqlite3_column_bytes(keydb->command_enumObjects,3);
+    		const char* name = (char*)sqlite3_column_text(keydb->command_enumObjects,0);
+    		obj.authority = (char*)sqlite3_column_text(keydb->command_enumObjects,1);
+    		obj.signature = (unsigned char*)sqlite3_column_blob(keydb->command_enumObjects,2);
+    		obj.siglen = sqlite3_column_bytes(keydb->command_enumObjects,2);
     		obj.blob = (unsigned char*)sqlite3_column_blob(keydb->command_enumObjects,3);
     		obj.bloblen = sqlite3_column_bytes(keydb->command_enumObjects,3);
     		if(!callback(thisptr,name,&obj)) {
     			break;
+    		}
     		}
     	}
     	sqlite3_reset(keydb->command_enumObjects);

@@ -200,6 +200,7 @@ static void processDNS(const char* name) {
 			}
 			//DNS parent
 			const char* parent = s.ReadString();
+			std::cerr<<"Parent of "<<dname<<" is "<<parent<<std::endl;
 			//DNS owner
 			const char* owner = s.ReadString();
 			//Signature (proof of ownership)
@@ -215,6 +216,7 @@ static void processDNS(const char* name) {
 			//resend this request recursively.
 			if(strlen(parent) == 0) {
 				//We are root; add directly to database.
+				std::cerr<<"Adding root domain to database\n";
 				OpenNet_AddDomain(db,dname,0,name);
 			}else {
 				//TODO: We are NOT root. Load parent node and check signature
@@ -232,6 +234,7 @@ static void processDNS(const char* name) {
 						void(*t_cb)(void*,const char*,const char*);
 						void* t_a = C([&](const char* a,const char* b){
 							//WE'RE VERIFIED
+							std::cerr<<"Adding domain with PARENT "<<parent<<" and name "<<dname<<std::endl;
 							OpenNet_AddDomain(db,dname,parent,name);
 						},t_cb);
 
@@ -1078,15 +1081,15 @@ void GGDNS_RestoreBackup(unsigned char* bytes, size_t sz) {
 	uint32_t keys;
 	str.Read(keys);
 	//Import certificates
-
+	std::cerr<<"Loading "<<keys<<"keys\n";
 	for(size_t i = 0;i<keys;i++) {
-		str.Increment(OpenNet_ImportKey(db,bytes));
+		str.Increment(OpenNet_ImportKey(db,str.ptr));
 	}
-
 
 
 	//Import NamedObjects
 	charizard;
+	std::vector<std::string> objs;
 	while(true) {
 		izard = str.ReadString();
 		if(strlen(izard) == 0) {
@@ -1095,15 +1098,19 @@ void GGDNS_RestoreBackup(unsigned char* bytes, size_t sz) {
 		NamedObject obj;
 		obj.authority = str.ReadString();
 		str.Read(keys);
+		std::cerr<<"Reading blob named "<<izard<<std::endl;
 		obj.bloblen = keys;
 		obj.blob = str.Increment(obj.bloblen);
 		str.Read(keys);
 		obj.siglen = keys;
 		obj.signature = str.Increment(obj.siglen);
 		OpenNet_AddObject(db,izard,&obj);
-		processDNS(izard);
+		objs.push_back(izard);
 	}
-
+	for(size_t i = 0;i<objs.size();i++) {
+		std::string izard = objs[i];
+		processDNS(izard.data());
+	}
 }
 
 

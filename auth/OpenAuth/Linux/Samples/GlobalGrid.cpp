@@ -170,7 +170,18 @@ if(argc == 1) {
 										}else {
 											if(argv[1] == std::string("restore")) {
 												//TODO: Read in file
-
+												std::vector<unsigned char> pikachu;
+												unsigned char buffy[1024];
+												while(true) {
+													int val = read(STDIN_FILENO,buffy,1024);
+													if(val <= 0) {
+														break;
+													}
+													size_t oldsz = pikachu.size();
+													pikachu.resize(pikachu.size()+val);
+													memcpy(pikachu.data()+oldsz,buffy,val);
+												}
+												GGDNS_RestoreBackup(pikachu.data(),pikachu.size());
 											}
 										}
 									}
