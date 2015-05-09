@@ -823,9 +823,7 @@ size_t OpenNet_RSA_Decrypt(void* db,const char* thumbprint, unsigned char* data,
     	sqlite3_bind_text(query,1,blob,strlen(blob),0);
     	sqlite3_bind_blob(query,2,newval,newlen,0);
     	sqlite3_bind_int(query,3,newlen/16);
-    	printf("Adding replica, count = %i\n",(int)newlen/16);
     	while(sqlite3_step(query) !=SQLITE_DONE){};
-    	printf("Added replica\n");
     	sqlite3_reset(query);
     	delete[] newval;
 
